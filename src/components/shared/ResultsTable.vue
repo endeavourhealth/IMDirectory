@@ -8,16 +8,17 @@
       :lazy="true"
       :loading="searchLoading"
       :paginator="true"
-      :paginatorTemplate="'PrevPageLink NextPageLink RowsPerPageDropdown'"
       :pt="{ thead: { class: 'z-1!' } }"
       :rows="rows"
       :rows-per-page-options="[rowsOriginal, rowsOriginal * 2, rowsOriginal * 4, rowsOriginal * 8]"
       :scrollable="true"
-      :total-records="pageForcer"
+      :total-records="paginatorTotal"
       :value="searchResults"
       class="p-datatable-sm"
       contextMenu
+      currentPageReportTemplate="Displaying {first} to {last} of {totalRecords} results"
       dataKey="iri"
+      :paginatorTemplate="paginatorTemplate"
       scrollHeight="flex"
       selectionMode="single"
       @page="onPage($event)"
@@ -30,12 +31,14 @@
           <div class="header">
             <div class="results-title">
               <span>Results </span>
-              <span v-if="totalCount">
-                <span>(</span>
-                <span data-testid="total-results">{{ totalCount }}</span>
-                <span>)</span>
-              </span>
-              <span v-else>0 found</span>
+              <template v-if="totalKnown">
+                <span v-if="totalCount">
+                  <span>(</span>
+                  <span data-testid="total-results">{{ totalCount }}</span>
+                  <span>)</span>
+                </span>
+                <span v-else>0 found</span>
+              </template>
             </div>
             <Button
               v-tooltip.right="'Download search results'"
@@ -93,20 +96,17 @@
 </template>
 
 <script lang="ts" setup>
+import { cloneDeep } from "lodash-es";
 import { ComputedRef, Ref, computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-
 import { BatteryBar, IMFontAwesomeIcon, OverlaySummary } from "@endeavour/vue-library/components";
 import { useDownloadFile, useOverlay } from "@endeavour/vue-library/composables";
 import { TextSearchStyle } from "@endeavour/vue-library/enums";
 import { getColourFromType, getFAIconFromType, getNamesAsStringFromTypes, isArrayHasLength } from "@endeavour/vue-library/helpers";
 import { PageSchema, QueryRequest, SearchResponse, SearchResultSummary } from "@endeavour/vue-library/models";
 import { useUserStore } from "@endeavour/vue-library/stores";
-
-import { cloneDeep } from "lodash-es";
 import DataTable, { DataTablePageEvent, DataTableRowSelectEvent } from "primevue/datatable";
 import { MenuItem } from "primevue/menuitem";
 import { useDialog } from "primevue/usedialog";
-
 import ActionButtons from "@/components/shared/ActionButtons.vue";
 import LoadingDialog from "@/components/shared/dynamicDialogs/LoadingDialog.vue";
 import { useDirectService } from "@/composables/useDirectService";
@@ -115,7 +115,6 @@ import type { DownloadByQueryOptions, ECLQueryRequest, ExtendedSearchResultSumma
 import { DownloadSettings, SearchOptions } from "@/models";
 import { EclService, EntityService, QueryService, UserService } from "@/services";
 import { useFilterStore } from "@/stores/filterStore";
-
 import DownloadByQueryOptionsDialog from "./dialogs/DownloadByQueryOptionsDialog.vue";
 
 interface Props {
@@ -167,10 +166,22 @@ const highestUsage = ref(0);
 const page = ref(0);
 const first = ref(0);
 const rows = ref(props.pageSize ? props.pageSize : 25);
-const rowsOriginal = ref(20);
+const rowsOriginal = ref(props.pageSize ? props.pageSize : 25);
 const searchTable = ref<InstanceType<typeof DataTable> | null>(null);
-const pageForcer = ref(1000);
 const total: Ref<number> = ref(0);
+// The quick autocomplete search returns at most this many results and no usable total
+const AUTOCOMPLETE_LIMIT = 20;
+// false while only the quick autocomplete results are shown; true once paging uses the full search
+const fullSearch = ref(false);
+// false until a full search has reported the total number of results
+const totalKnown = ref(false);
+// With no total, give the paginator one row beyond the current page so that only "next" is offered
+const paginatorTotal = computed(() => (totalKnown.value ? totalCount.value : first.value + rows.value + 1));
+const paginatorTemplate = computed(() =>
+  totalKnown.value
+    ? "FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+    : "PrevPageLink NextPageLink RowsPerPageDropdown"
+);
 const rClickOptions: Ref<MenuItem[]> = ref([
   {
     label: "Select",
@@ -204,9 +215,10 @@ watch(
       searchResults.value = [];
       totalCount.value = 0;
       page.value = 0;
-      for (const key in pageCache.value) {
-        delete pageCache.value[key];
-      }
+      first.value = 0;
+      pageCache.value = {};
+      fullSearch.value = false;
+      totalKnown.value = false;
       await onSearch();
     }
   }
@@ -225,27 +237,40 @@ async function onSearch() {
   searchController?.abort();
   const controller = (searchController = new AbortController());
   searchLoading.value = true;
-  const response = await search(page.value + 1, rows.value, page.value == 0 ? TextSearchStyle.autocomplete : TextSearchStyle.all, undefined, controller);
-  if (controller.signal.aborted) return;
-  emit("searchResultsUpdated", response);
-  const lastSearchTerm = props.searchTerm;
-  if (response?.entities && isArrayHasLength(response.entities)) {
-    processSearchResults(response);
-    pageCache.value[page.value] = searchResults.value;
-  }
-  searchLoading.value = false;
-  if (!props.eclQuery && lastSearchTerm === props.searchTerm && page.value == 0) {
-    let offset = undefined;
-    let lefttoDo = 0;
-    if (response?.entities) {
-      offset = response.entities.length;
-    }
-    search(2, rows.value, TextSearchStyle.all, offset, controller).then(slow => {
+  const requestedPage = page.value;
+  try {
+    let quickCount = 0;
+    if (!props.eclQuery && !fullSearch.value && requestedPage === 0) {
+      // A new text search starts with the quick autocomplete so the user can pick a result straight away
+      const limit = Math.min(rows.value, AUTOCOMPLETE_LIMIT);
+      const quick = await search(1, limit, TextSearchStyle.autocomplete, controller);
       if (controller.signal.aborted) return;
-      addSearchResults(slow);
-      pageCache.value[page.value] = searchResults.value;
-      emit("searchResultsUpdated", response);
-    });
+      emit("searchResultsUpdated", quick);
+      processSearchResults(quick);
+      totalKnown.value = false;
+      quickCount = searchResults.value.length;
+      // A full quick page: stop here with just a "next" arrow; the full search runs when the user pages on
+      if (quickCount >= limit) {
+        // Kept for paging back: the full search starts with this same set, so it need not be fetched again
+        pageCache.value[0] = searchResults.value;
+        return;
+      }
+      // Fewer than that: follow up with the full search unprompted, leaving the quick results selectable meanwhile
+      fullSearch.value = true;
+      if (quickCount) searchLoading.value = false;
+    }
+    // Full search: one request per page, so the rows shown are exactly the server's page
+    const response = await search(requestedPage + 1, rows.value, TextSearchStyle.all, controller);
+    if (controller.signal.aborted) return;
+    emit("searchResultsUpdated", response);
+    if (quickCount && !isArrayHasLength(response?.entities)) {
+      // The full search added nothing, so the quick results are the complete list
+      totalCount.value = quickCount;
+      totalKnown.value = true;
+    } else processSearchResults(response);
+    if (searchResults.value.length) pageCache.value[requestedPage] = searchResults.value;
+  } finally {
+    if (searchController === controller) searchLoading.value = false;
   }
 }
 
@@ -254,7 +279,7 @@ function updateRows(newRows: number) {
   onSearch();
 }
 
-async function search(pageNumber: number, pageSize: number, searchStyle: TextSearchStyle, offset?: number, controller?: AbortController) {
+async function search(pageNumber: number, pageSize: number, searchStyle: TextSearchStyle, controller?: AbortController) {
   let response = undefined;
   if (props.eclQuery) {
     props.eclQuery.page = pageNumber;
@@ -263,15 +288,21 @@ async function search(pageNumber: number, pageSize: number, searchStyle: TextSea
   } else if (props.searchTerm && props.searchTerm.length > 2) {
     if (props.imQuery) {
       props.imQuery.textSearch = props.searchTerm;
-      props.imQuery.page = PageSchema.parse({ pageNumber: pageNumber, pageSize: pageSize });
+      props.imQuery.page = PageSchema.parse({
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+        offset: (pageNumber-1)*pageSize
+      });
       props.imQuery.textSearchStyle = searchStyle;
-      if (offset) props.imQuery.page.offset = offset;
       response = await QueryService.queryIMSearch(props.imQuery, controller);
     } else {
       const searchOptions: SearchOptions = cloneDeep(selectedFilters.value);
       searchOptions.textSearch = props.searchTerm;
-      searchOptions.page = PageSchema.parse({ pageNumber: pageNumber, pageSize: pageSize });
-      if (offset) searchOptions.page.offset = offset;
+      searchOptions.page = PageSchema.parse({
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+        offset: (pageNumber-1)*pageSize
+      });
       const imQuery = buildIMQueryFromFilters(searchOptions);
       imQuery.textSearchStyle = searchStyle;
       response = await QueryService.queryIMSearch(imQuery, controller);
@@ -300,11 +331,20 @@ function isFavourite(iri: string) {
 
 function processSearchResults(searchResponse: SearchResponse | undefined): void {
   if (searchResponse?.entities && isArrayHasLength(searchResponse.entities)) {
-    //if (searchResults.value && searchResults.value.length) addSearchResults(searchResponse);
     searchResults.value = mapSearchResults(searchResponse);
-    if (searchResponse.page && searchResponse.page == 1) totalCount.value = searchResponse.totalCount ?? 0;
+    if (searchResponse.totalCount != null) {
+      totalCount.value = searchResponse.totalCount;
+      totalKnown.value = true;
+    }
     if (searchResponse.size) total.value = searchResponse.size;
     highestUsage.value = searchResponse.highestUsage ?? 0;
+  } else {
+    // Nothing came back for this page: never leave the previous page's rows on screen
+    searchResults.value = [];
+    if (page.value === 0) {
+      totalCount.value = 0;
+      totalKnown.value = true;
+    }
   }
 }
 function mapSearchResults(searchResponse: SearchResponse) {
@@ -318,33 +358,25 @@ function mapSearchResults(searchResponse: SearchResponse) {
   });
 }
 
-function addSearchResults(searchResponse: SearchResponse | undefined) {
-  const fastIds = new Set(searchResults.value.map(result => result.iri));
-  if (searchResponse?.entities && isArrayHasLength(searchResponse.entities)) {
-    for (const item of searchResponse.entities) {
-      if (!fastIds.has(item.iri)) {
-        const copy = cloneDeep(item) as ExtendedSearchResultSummary;
-        copy.icon = getFAIconFromType(item.type);
-        copy.color = getColourFromType(item.type);
-        copy.typeNames = getNamesAsStringFromTypes(item.type);
-        copy.favourite = isFavourite(item.iri);
-        searchResults.value.push(copy);
-      }
-    }
-    totalCount.value = searchResponse.totalCount ?? 0;
-    highestUsage.value = searchResponse.highestUsage ?? 0;
-  }
-}
-
 function updateRClickOptions() {
   if (selected.value.iri) rClickOptions.value[rClickOptions.value.length - 1].label = isFavourite(selected.value.iri) ? "Unfavourite" : "Favourite";
 }
 
 async function onPage(event: DataTablePageEvent) {
-  page.value = event.page;
-  first.value = page.value * rows.value;
-  if (pageCache.value[event.page]) {
-    searchResults.value = pageCache.value[event.page]!;
+  if (event.rows !== rows.value) {
+    // Page size changed: cached pages no longer line up, so restart from the first page
+    rows.value = event.rows;
+    page.value = 0;
+    first.value = 0;
+    pageCache.value = {};
+  } else {
+    page.value = event.page;
+    first.value = event.first;
+  }
+  // Paging on from the quick autocomplete results: every further page comes from the full search
+  fullSearch.value = true;
+  if (pageCache.value[page.value]) {
+    searchResults.value = pageCache.value[page.value]!;
   } else {
     await onSearch();
   }
@@ -442,10 +474,8 @@ async function download(downloadSettings: DownloadSettings): Promise<void> {
 
 .datatable-flex-cell {
   display: -webkit-box;
-  display: -ms-flexbox;
   display: flex;
   -webkit-box-flex: 1;
-  -ms-flex: 1 1 0;
   flex: 1 1 0;
   gap: 0.25rem;
   -webkit-box-align: center;

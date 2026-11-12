@@ -16,6 +16,7 @@
     <div class="nested-match-container">
       <div v-for="(item, subIndex) in boolGroup" :key="item.uuid">
         <ECLExpressionConstraint
+          v-model:exclude="boolGroup![subIndex].notExists"
           v-model:match="boolGroup![subIndex] as Query"
           v-model:parent="match"
           v-model:parentGroup="group"
@@ -29,6 +30,7 @@
           @activateInput="activeInputId = $event"
           @rationalise="onRationalise"
           @ungroup="onUngroup"
+          @updateExclusion="onUpdateExclusion"
         />
       </div>
       <div>
@@ -135,25 +137,21 @@
           <Button v-tooltip="`Click to revert to  ${subOperator}`" label="}{" text @click.stop="ungroup()" />
         </div>
 
-        <!--
-        <div v-if="parentGroup.includes(index) && parentGroup.length > 1">
-          <Button
-            v-tooltip="'Click to create boolean subgroup'"
-            :label="index === parentGroup[0] ? '(' : ')'"
-            :severity="'secondary'"
-            @click="onCreateSubgroup"
-          />
-        </div>
-        -->
         <div class="concept-selector-container">
           <ConceptSelector ref="conceptSelector" v-model:node="match.is" :parent="parent" @update-match="updateMatch" />
         </div>
         <div v-if="match.is.invalid">
           <Button v-tooltip="'Value is invalid for property'" icon="fa-solid fa-exclamation" severity="danger" />
         </div>
-        <div class="add-group">
-          <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="Add attribute" type="button" @click="addRefinement()" />
+        <div class="stack">
+          <div class="add-group">
+            <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="concept" type="button" @click="addRefinement()" />
+          </div>
+          <div class="add-group">
+            <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="attribute" type="button" @click="addRefinement()" />
+          </div>
         </div>
+
         <div class="add-group">
           <Button class="delete-button" icon="fa-solid fa-trash" @click.stop="deleteMatch" />
         </div>
@@ -188,14 +186,11 @@ const pendingFocusUuid = moduleRef<string | undefined>();
 </script>
 
 <script lang="ts" setup>
+import { v4 } from "uuid";
 import { Ref, computed, nextTick, onMounted, ref, watch } from "vue";
-
 import { Bool, Entail, QUERY } from "@endeavour/vue-library/enums";
 import { type Node, Query, type QueryRequest, type TTIriRef, type Where } from "@endeavour/vue-library/models";
-
 import Button from "primevue/button";
-import { v4 } from "uuid";
-
 import BooleanEditor from "@/components/imquery/BooleanEditor.vue";
 import ECLRefinement from "@/components/imquery/ECLRefinement.vue";
 import { onDragEnd, onDragOver, onDragStart, onDrop } from "@/composables/useDragContext";
@@ -213,7 +208,6 @@ import {
   updateFocusConcepts
 } from "@/helpers/buildQuery";
 import { QueryService } from "@/services";
-
 import ConceptSelector from "./ConceptSelector.vue";
 
 interface Props {
@@ -240,7 +234,7 @@ const emit = defineEmits<{
   (e: "activateInput", value: string): void;
   (e: "includeSubtypesChanged"): void;
   (e: "ungroup"): void;
-  (e: "updateExclusion", value: boolean): void;
+  (e: "updateExclusion"): void;
 }>();
 const isRoleGroup = computed(() => getIsRoleGroup(match.value.where));
 const propertySearch: Ref<QueryRequest | undefined> = ref(undefined);
@@ -284,6 +278,7 @@ function updateOperator(val: BooleanOperator) {
     query.or = query.and;
     delete query.and;
   }
+  emit("rationalise");
 }
 
 function claimFocus() {
@@ -333,6 +328,17 @@ function addConcept() {
 }
 function updateExclusion() {
   exclude.value = !exclude.value;
+  emit("updateExclusion");
+}
+function onUpdateExclusion() {
+  if (match.value.and && match.value.and.length === 2) {
+    if (match.value.and[0].or && !match.value.and[1].notExists) {
+      match.value.or = [];
+      match.value.or.push(...match.value.and[0].or);
+      match.value.or.push(match.value.and[1]);
+      delete match.value.and;
+    }
+  }
 }
 
 function updateMatch() {
