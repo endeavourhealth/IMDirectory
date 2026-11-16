@@ -81,16 +81,13 @@
 
 <script lang="ts" setup>
 import { Ref, computed, inject, onMounted, ref, watch } from "vue";
-
 import { AlertDialog } from "@endeavour/vue-library/components";
 import { useCopyToClipboard } from "@endeavour/vue-library/composables";
 import { IM } from "@endeavour/vue-library/enums";
 import { isArrayHasLength, isObjectHasKeys } from "@endeavour/vue-library/helpers";
 import type { PropertyShape, SearchResultSummary, TTEntity } from "@endeavour/vue-library/models";
 import { useDialogStore } from "@endeavour/vue-library/stores";
-
 import { useDialog } from "primevue/usedialog";
-
 import QueryDisplay from "@/components/directory/viewer/QueryDisplay.vue";
 import MembersPreview from "@/components/directory/viewer/set/MembersPreview.vue";
 import ECLBuilder from "@/components/imquery/ECLBuilder.vue";
@@ -99,7 +96,6 @@ import { EditorMode } from "@/enums";
 import injectionKeys from "@/injectionKeys/injectionKeys";
 import { type ECLQueryRequest } from "@/models";
 import { EclService } from "@/services";
-
 import AddByCodeList from "./setDefinition/AddByCodeList.vue";
 
 interface Props {
@@ -262,6 +258,10 @@ async function processProps() {
     ecl.value = eclQuery.value.ecl!;
     lastValidEcl.value = ecl.value;
   } else {
+    if (editorEntity.value && editorEntity.value[IM.ID]) {
+      ecl.value = await EclService.getEclFromMembers(editorEntity.value[IM.ID] as string);
+      lastValidEcl.value = ecl.value;
+    }
     initialised.value = true;
   }
 }
@@ -374,7 +374,6 @@ Textarea {
   gap: 1rem;
   margin: 1rem 0 1rem 0;
 }
-
 
 #definition-panel-container:deep(.p-tabview-panels) {
   flex: 1 1 auto;
