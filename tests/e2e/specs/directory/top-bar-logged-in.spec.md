@@ -13,4 +13,3 @@ This specification describes the top bar functionality for logged-in users in IM
 * Click account menu
 * Click "Logout" in account menu
 * Confirm dialog
-* Login button is displayed
