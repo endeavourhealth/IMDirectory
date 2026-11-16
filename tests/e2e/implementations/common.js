@@ -60,14 +60,6 @@ step("Login", async () => {
   await pw.page.click("button >> text=Sign In");
 
   await pw.page.waitForSelector("#topbar");
-  const favourites = pw.page.locator(".favourites-container").filter({ hasText: "No favourites" });
-  try {
-    await favourites.waitFor({ state: "visible", timeout: 1000 });
-  } catch (e) {
-    // Favourites leftover from previous test so clear them
-    await pw.page.click("button >> text=Clear favourites");
-    await pw.page.locator(".p-confirmdialog").locator(".p-confirmdialog-accept-button").click();
-  }
 
   if (PRIVATE_MODE) {
     await pw.page.waitForSelector('[data-testid="license-dialog"]');
@@ -75,6 +67,15 @@ step("Login", async () => {
     await pw.page.waitForSelector("#cookies-sidebar");
     await pw.page.click('[data-testid="accept-all-cookies"]');
     await pw.page.waitForSelector("#cookies-sidebar", { state: "hidden" });
+  }
+
+  const favourites = pw.page.locator(".favourites-container").filter({ hasText: "No favourites" });
+  try {
+    await favourites.waitFor({ state: "visible", timeout: 1000 });
+  } catch (e) {
+    // Favourites leftover from previous test so clear them
+    await pw.page.click("button >> text=Clear favourites");
+    await pw.page.locator(".p-confirmdialog").locator(".p-confirmdialog-accept-button").click();
   }
 });
 
