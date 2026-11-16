@@ -14,7 +14,7 @@
     "build": "pnpm tsc:build && vite build",
     "test:unit": "vitest run --coverage",
     "test:e2e": "gauge run --verbose",
-    "test:e2e:ci": "cross-env headless_chrome=true screenshot_on_failure=true gauge run",
+    "test:e2e:ci": "gauge run --env dev",
     "lint": "cross-env TIMING=1 eslint --fix",
     "format": "prettier --write \"{src,tests}/**/*.{js,ts,vue,json,css,scss,md}\"",
     "format:check": "prettier --list-different \"{src,tests}/**/*.{js,ts,vue,json,css,scss,md}\"",
