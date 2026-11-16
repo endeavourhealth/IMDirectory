@@ -2,7 +2,6 @@
 
  This specification describes the concept set viewer
 * Open IMDirectory
-* Login
 
 ## Display can be undefined
 * Open filters

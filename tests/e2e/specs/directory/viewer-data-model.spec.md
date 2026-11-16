@@ -2,7 +2,6 @@
 
  This specification describes the data model viewer
 * Open IMDirectory
-* Login
 
 ## Properties tab has properties
 * Open filters

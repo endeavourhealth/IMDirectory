@@ -3,7 +3,6 @@
 This specification describes the concept viewer functionality in IMDirectory
 
 * Open IMDirectory
-* Login
 * Search for "atshma discorder"
 * Select "Asthma (disorder)" result
 

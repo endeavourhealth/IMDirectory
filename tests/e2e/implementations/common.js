@@ -42,11 +42,7 @@ step("Open IMDirectory", async () => {
     await pw.page.waitForSelector("#cookies-sidebar");
     await pw.page.click('[data-testid="accept-all-cookies"]');
     await pw.page.waitForSelector("#cookies-sidebar", { state: "hidden" });
-  }
-});
 
-step("Login", async () => {
-  if (!PRIVATE_MODE) {
     await pw.page.waitForSelector('[data-testid="account-menu"]');
     await pw.page.click('[data-testid="account-menu"]');
     await pw.page.click("#account-menu >> text=Login");

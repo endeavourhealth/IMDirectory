@@ -27,7 +27,6 @@ This specification describes the navigation tree functionality of IMDirectory.
 * Overlay panel contains "Ontologies"
 
 ## Adds favourites
-* Login
 * Search for "Scoliosis deformity of spine (disorder)"
 * Select "Scoliosis deformity of spine (disorder)" result
 * Click favourite button
@@ -36,7 +35,6 @@ This specification describes the navigation tree functionality of IMDirectory.
 * Parent "Favourites" has child "Scoliosis deformity of spine (disorder)"
 
 ## Removed from tree
-* Login
 * Search for "Scoliosis deformity of spine (disorder)"
 * Select "Scoliosis deformity of spine (disorder)" result
 * Click favourite button

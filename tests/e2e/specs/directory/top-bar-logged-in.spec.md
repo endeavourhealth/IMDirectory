@@ -3,7 +3,6 @@
 This specification describes the top bar functionality for logged-in users in IMDirectory
 
 * Open IMDirectory
-* Login
 
 ## Can route to my account
 * Click account menu
