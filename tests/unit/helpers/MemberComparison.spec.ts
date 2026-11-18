@@ -1,14 +1,13 @@
-import type { SearchResponse } from "@endeavour/vue-library/models";
-
 import { describe, expect, it } from "vitest";
-
+import type { PageableNode } from "@endeavour/vue-library/models";
 import { compareMembers, isTruncated } from "@/helpers/MemberComparison";
 
-function response(names: string[], totalCount?: number): SearchResponse {
-  return {
-    totalCount,
-    entities: names.map(name => ({ iri: "http://snomed.info/sct#" + name, name, type: [] }))
-  };
+function response(names: string[], totalCount?: number): PageableNode | undefined {
+  if (totalCount !== undefined)
+    return {
+      totalCount: totalCount,
+      result: names.map(name => ({ iri: "http://snomed.info/sct#" + name, name }))
+    } as PageableNode;
 }
 
 describe("compareMembers", () => {
@@ -32,7 +31,7 @@ describe("compareMembers", () => {
   it("handles missing responses", () => {
     expect(compareMembers(undefined, undefined)).toEqual({ current: [], updated: [], added: 0, removed: 0, unchanged: 0 });
     expect(compareMembers(undefined, response(["a"])).added).toBe(1);
-    expect(compareMembers(response(["a"]), {}).removed).toBe(1);
+    expect(compareMembers(response(["a"]), response(["b"])).removed).toBe(1);
   });
 
   it("ignores duplicate iris", () => {

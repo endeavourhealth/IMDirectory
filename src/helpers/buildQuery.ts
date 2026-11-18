@@ -104,8 +104,65 @@ function addFilterToIMQuery(predicate: string, values: unknown[], query: Query) 
   query.where.and.push(where);
 }
 
+type IsConcept = { iri?: string; name?: string };
+
+function toInEntry(concept: IsConcept): IsConcept {
+  const entry: IsConcept = { iri: concept.iri };
+  if (concept.name) entry.name = concept.name;
+  return entry;
+}
+
+/**
+ * Adds a concept to a Query.is node.
+ * The first concept is held in node.iri / node.name. Adding a second moves all concepts into node.in.
+ */
+export function addConceptToIs(node: Node, concept: IsConcept): void {
+  if (!concept.iri) return;
+  if (!node.in?.length) {
+    if (!node.iri) {
+      node.iri = concept.iri;
+      node.name = concept.name;
+      delete node.in;
+      return;
+    }
+    if (node.iri === concept.iri) return;
+    node.in = [toInEntry(node)];
+    delete node.iri;
+    delete node.name;
+  }
+  if (node.in.some(entry => entry.iri === concept.iri)) return;
+  node.in.push(toInEntry(concept));
+}
+
+/**
+ * Removes a concept from the node.in list. If only one concept remains it moves back to node.iri / node.name.
+ */
+export function removeConceptFromIs(node: Node, index: number): void {
+  if (!node.in || index < 0 || index >= node.in.length) return;
+  node.in.splice(index, 1);
+  normaliseIs(node);
+}
+
+/**
+ * Ensures a Query.is node holds either a single concept (iri / name) or a list of two or more (in), never both.
+ */
+export function normaliseIs(node: Node): void {
+  if (!node.in) return;
+  if (node.iri) {
+    if (!node.in.some(entry => entry.iri === node.iri)) node.in.unshift(toInEntry(node));
+    delete node.iri;
+    delete node.name;
+  }
+  if (node.in.length === 1) {
+    node.iri = node.in[0].iri;
+    if (node.in[0].name) node.name = node.in[0].name;
+  }
+  if (node.in.length < 2) delete node.in;
+}
+
 export function updateFocusConcepts(match: Query): string[] {
   if (match.is && match.is.iri) return [match.is.iri];
+  if (match.is?.in?.length) return match.is.in.filter(entry => entry.iri).map(entry => entry.iri as string);
   const focusConcepts: string[] = [];
   focusConcepts.push(...focusChildren(match.or));
   focusConcepts.push(...focusChildren(match.and));

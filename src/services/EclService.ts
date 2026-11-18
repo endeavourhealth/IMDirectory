@@ -1,17 +1,8 @@
 import { parseApiResponse } from "@endeavour/vue-library/helpers";
-import { type PageableNode, type Query, type SearchResponse, SearchResponseSchema } from "@endeavour/vue-library/models";
+import { type Query, type SearchResponse, SearchResponseSchema } from "@endeavour/vue-library/models";
 import { type ECLQueryRequest, ECLQueryRequestSchema } from "@/models";
 import Env from "./Env";
 import api from "./api";
-
-
-
-
-
-
-
-
-
 
 const API_URL = Env.API + "api/ecl/protected";
 
@@ -27,12 +18,7 @@ const EclService = {
   async getEcl(query: Query): Promise<string> {
     return await api.post(API_URL + "/ecl", { query: query });
   },
-  async getEclFromMembers(iri: string,controller?: AbortController): Promise<string> {
-    return await api.get(API_URL + "/protected/eclfrommembers", {
-      params: { iri: iri},
-      signal: controller?.signal
-    });
-  },
+
   async getQueryFromECL(ecl: string, raw: boolean = false): Promise<ECLQueryRequest> {
     const result = await api.post(
       API_URL + "/queryFromEcl",
@@ -105,6 +91,15 @@ const EclService = {
       { headers: { "Content-Type": "application/json" }, raw: true }
     );
     return parseApiResponse(result, ECLQueryRequestSchema);
+  },
+  async getEclFromMembers(iri: string, controller?: AbortController): Promise<string> {
+    return await api.get(API_URL + "/protected/eclfrommembers", {
+      params: { iri: iri },
+      signal: controller?.signal
+    });
+  },
+  async optimiseOrs(query: Query): Promise<Query> {
+    return await api.post(API_URL + "/optimiseOrs", { query: query }, { headers: { "Content-Type": "application/json" }, raw: true });
   }
 };
 export default EclService;

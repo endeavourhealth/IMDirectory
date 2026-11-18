@@ -1,8 +1,5 @@
-import { TTIriRef, TTIriRefSchema } from "@endeavour/vue-library/models";
-import { Query, QuerySchema } from "@endeavour/vue-library/models";
-
 import z from "zod";
-
+import { Query, QuerySchema, TTIriRef, TTIriRefSchema } from "@endeavour/vue-library/models";
 import { ECLStatus, ECLStatusSchema } from "./ECLStatus";
 
 export interface ECLQueryRequest {
@@ -15,6 +12,7 @@ export interface ECLQueryRequest {
   statusFilter?: TTIriRef[];
   page?: number;
   size?: number;
+  includeInactive?: boolean;
 }
 
 export const ECLQueryRequestSchema = z.strictObject({
@@ -26,7 +24,8 @@ export const ECLQueryRequestSchema = z.strictObject({
   limit: z.number().default(1000),
   statusFilter: z.array(TTIriRefSchema).optional(),
   page: z.number().default(1),
-  size: z.number().default(20)
+  size: z.number().default(20),
+  includeInactive: z.boolean().optional()
 }) satisfies z.ZodType<ECLQueryRequest>;
 
 // export type ECLQueryRequest = z.output<typeof ECLQueryRequestSchema>;

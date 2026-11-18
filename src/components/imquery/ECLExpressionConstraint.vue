@@ -138,14 +138,68 @@
         </div>
 
         <div class="concept-selector-container">
-          <ConceptSelector ref="conceptSelector" v-model:node="match.is" :parent="parent" @update-match="updateMatch" />
+          <div v-if="listMode" class="is-list">
+            <Select
+              :modelValue="match.is.entails ?? ''"
+              :options="ConstraintOperatorOptions"
+              data-testid="list-entailment-select"
+              option-label="label"
+              option-value="value"
+              style="width: 5.5rem; min-height: 2.3rem"
+              @update:modelValue="updateEntailment"
+            >
+              <template #value>
+                <div class="flex items-center">
+                  <div>{{ match.is.entails || "--" }}</div>
+                </div>
+              </template>
+              <template #option="slotProps">
+                <div v-tooltip="slotProps.option.tooltip" class="flex items-center" style="min-height: 1rem">
+                  <div>{{ slotProps.option.label }}</div>
+                </div>
+              </template>
+            </Select>
+            <div class="is-list-entries">
+              <div v-for="(concept, inIndex) in concepts" :key="concept.iri" class="is-list-entry" data-testid="list-concept">
+                <IMViewerLink :iri="concept.iri!" :label="concept.name" />
+                <Button
+                  v-if="concepts.length > 1"
+                  v-tooltip="'Remove from list'"
+                  data-testid="remove-from-list-button"
+                  icon="fa-solid fa-xmark"
+                  severity="secondary"
+                  text
+                  @click.stop="removeIn(inIndex)"
+                />
+              </div>
+              <div v-if="adding" class="is-list-entry">
+                <ConceptSelector
+                  :key="draftKey"
+                  ref="draftSelector"
+                  v-model:node="draftNode"
+                  :parent="parent"
+                  :showEntailment="false"
+                  @update-match="onDraftSelected"
+                />
+                <Button
+                  v-tooltip="'Cancel'"
+                  data-testid="cancel-add-to-list-button"
+                  icon="fa-solid fa-xmark"
+                  severity="secondary"
+                  text
+                  @click.stop="cancelIn()"
+                />
+              </div>
+            </div>
+          </div>
+          <ConceptSelector v-else ref="conceptSelector" v-model:node="match.is" :parent="parent" @update-match="updateMatch" />
         </div>
         <div v-if="match.is.invalid">
           <Button v-tooltip="'Value is invalid for property'" icon="fa-solid fa-exclamation" severity="danger" />
         </div>
         <div class="stack">
-          <div class="add-group">
-            <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="concept" type="button" @click="addRefinement()" />
+          <div v-if="hasConcept && !adding" class="add-group">
+            <Button class="add-button" data-testid="add-to-list-button" icon="fa-solid fa-plus" label="to list" type="button" @click="addIn()" />
           </div>
           <div class="add-group">
             <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="attribute" type="button" @click="addRefinement()" />
@@ -193,9 +247,12 @@ import { type Node, Query, type QueryRequest, type TTIriRef, type Where } from "
 import Button from "primevue/button";
 import BooleanEditor from "@/components/imquery/BooleanEditor.vue";
 import ECLRefinement from "@/components/imquery/ECLRefinement.vue";
+import IMViewerLink from "@/components/shared/IMViewerLink.vue";
 import { onDragEnd, onDragOver, onDragStart, onDrop } from "@/composables/useDragContext";
+import { ConstraintOperatorOptions } from "@/constants";
 import {
   addConceptToGroup,
+  addConceptToIs,
   checkGroupChange,
   createNewBoolGroup,
   getBoolGroup,
@@ -204,6 +261,8 @@ import {
   getExclusionOptions,
   getIsRoleGroup,
   manageRoleGroup,
+  normaliseIs,
+  removeConceptFromIs,
   removeSubgroup,
   updateFocusConcepts
 } from "@/helpers/buildQuery";
@@ -254,6 +313,19 @@ const boolGroup = computed(() => {
   return getBoolGroup("Match", match.value);
 });
 const conceptSelector = ref<{ focus: () => void } | null>(null);
+const draftSelector = ref<{ focus: () => void } | null>(null);
+// The concept currently being added to the list. Only written to match.is once a concept is selected.
+const adding = ref(false);
+const draftNode: Ref<Node> = ref({} as Node);
+const draftKey = ref(0);
+const concepts = computed(() => {
+  const is = match.value.is;
+  if (!is) return [];
+  if (is.in?.length) return is.in.filter(entry => entry.iri);
+  return is.iri ? [{ iri: is.iri, name: is.name }] : [];
+});
+const hasConcept = computed(() => concepts.value.length > 0);
+const listMode = computed(() => !!match.value.is?.in?.length || (adding.value && hasConcept.value));
 const subOperator = computed(() => {
   if (props.parentOperator === Bool.or) return "AND";
   else return "OR";
@@ -312,7 +384,41 @@ function init() {
   if (!match.value.or && !match.value.and && !match.value.is) {
     match.value.is = { entails: Entail.descendantsOrSelfOf } as Node;
   }
+  if (match.value.is) normaliseIs(match.value.is);
   maintainFocusConcepts();
+}
+
+function addIn() {
+  if (!hasConcept.value) return;
+  draftNode.value = {} as Node;
+  draftKey.value++;
+  adding.value = true;
+  nextTick(() => draftSelector.value?.focus());
+}
+
+function onDraftSelected() {
+  if (!adding.value || !match.value.is || !draftNode.value.iri) return;
+  addConceptToIs(match.value.is, draftNode.value);
+  adding.value = false;
+  draftNode.value = {} as Node;
+  maintainFocusConcepts();
+}
+
+function cancelIn() {
+  adding.value = false;
+  draftNode.value = {} as Node;
+}
+
+function removeIn(inIndex: number) {
+  if (!match.value.is) return;
+  removeConceptFromIs(match.value.is, inIndex);
+  maintainFocusConcepts();
+}
+
+function updateEntailment(value: string) {
+  if (!match.value.is) return;
+  if (value) match.value.is.entails = value as Entail;
+  else delete match.value.is.entails;
 }
 
 function addConcept() {
@@ -541,6 +647,27 @@ async function updateQueryForPropertySearch() {
 .concept-selector-container {
   flex: 1 1 0;
   min-width: 70vw;
+}
+
+.is-list {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.is-list-entries {
+  display: flex;
+  flex: 1 1 0;
+  flex-flow: column nowrap;
+  min-width: 0;
+}
+
+.is-list-entry {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .add-group {

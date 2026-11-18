@@ -60,9 +60,11 @@
             <Column field="name" header="Name">
               <template #body="{ data }: { data: ComparedMember }">{{ data.name ?? data.iri }}</template>
             </Column>
-            <Column field="code" header="Code" style="width: 20%" />
+            <Column field="code" header="Code" style="width: 20%">
+              <template #body="{ data }: { data: ComparedMember }">{{ data.code ?? "" }}</template>
+            </Column>
             <Column header="Status" style="width: 15%">
-              <template #body="{ data }: { data: ComparedMember }">{{ data.status?.name ?? "" }}</template>
+              <template #body="{ data }: { data: ComparedMember }">{{ data.status?.iri === IM.ACTIVE ? "Active" : "Inactive" }}</template>
             </Column>
           </DataTable>
         </div>
@@ -76,17 +78,15 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref } from "vue";
-
-import type { SearchResponse } from "@endeavour/vue-library/models";
-
+import { Ref, computed, onMounted, ref } from "vue";
+import { IM } from "@endeavour/vue-library/enums";
+import type { Query, SearchResponse } from "@endeavour/vue-library/models";
 import { type ComparedMember, compareMembers, isTruncated } from "@/helpers/MemberComparison";
+import { SetService } from "@/services";
 
 interface Props {
-  /** Members currently saved against the set */
-  currentMembers?: SearchResponse;
-  /** Members generated from the new definition */
-  newMembers?: SearchResponse;
+  query: Query;
+  setIri: string;
   loading?: boolean;
 }
 
@@ -102,9 +102,11 @@ const viewModes: { label: string; value: ViewMode }[] = [
 ];
 const viewMode = ref<ViewMode>("all");
 const filterText = ref("");
-
-const comparison = computed(() => compareMembers(props.currentMembers, props.newMembers));
-const truncated = computed(() => isTruncated(props.currentMembers) || isTruncated(props.newMembers));
+const currentMembers: Ref<SearchResponse | undefined> = ref();
+const newMembers: Ref<SearchResponse | undefined> = ref();
+const includeInactive= ref(false);
+const comparison = computed(() => compareMembers(currentMembers.value, newMembers.value));
+const truncated = computed(() => isTruncated());
 
 const panels = computed(() => [
   {
@@ -122,6 +124,17 @@ const panels = computed(() => [
     emptyMessage: emptyMessage(comparison.value.updated.length, "The new definition generates no members.", "No members are added by the new definition.")
   }
 ]);
+
+onMounted(async () => {
+  await init();
+});
+
+async function init() {
+  if (!currentMembers.value) {
+    currentMembers.value = await SetService.getCurrentMembers(props.setIri,includeInactive.value);
+  }
+  newMembers.value = await SetService.getMembersFromQuery(props.query, includeInactive.value);
+}
 
 function applyFilters(members: ComparedMember[]): ComparedMember[] {
   const text = filterText.value.trim().toLowerCase();

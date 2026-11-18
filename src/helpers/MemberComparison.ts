@@ -1,5 +1,4 @@
 import type { SearchResponse, SearchResultSummary } from "@endeavour/vue-library/models";
-
 export type MemberChange = "added" | "removed" | "unchanged";
 
 export interface ComparedMember extends SearchResultSummary {
@@ -17,12 +16,14 @@ export interface MemberComparison {
 }
 
 function byName(a: SearchResultSummary, b: SearchResultSummary): number {
-  return (a.name ?? a.iri).localeCompare(b.name ?? b.iri, undefined, { sensitivity: "base" });
+  return (a.name ?? a.iri!).localeCompare(b.name ?? b.iri!, undefined, { sensitivity: "base" });
 }
 
 function uniqueByIri(members: SearchResultSummary[] | undefined): Map<string, SearchResultSummary> {
   const map = new Map<string, SearchResultSummary>();
-  for (const member of members ?? []) if (!map.has(member.iri)) map.set(member.iri, member);
+  for (const member of members ?? [])
+    if (member.iri)
+      if (!map.has(member.iri)) map.set(member.iri, member);
   return map;
 }
 
@@ -35,10 +36,10 @@ export function compareMembers(currentMembers?: SearchResponse, newMembers?: Sea
   const updatedByIri = uniqueByIri(newMembers?.entities);
 
   const current: ComparedMember[] = [...currentByIri.values()]
-    .map(member => ({ ...member, change: (updatedByIri.has(member.iri) ? "unchanged" : "removed") as MemberChange }))
+    .map(member => ({ ...member, change: (updatedByIri.has(member.iri!) ? "unchanged" : "removed") as MemberChange }))
     .sort(byName);
   const updated: ComparedMember[] = [...updatedByIri.values()]
-    .map(member => ({ ...member, change: (currentByIri.has(member.iri) ? "unchanged" : "added") as MemberChange }))
+    .map(member => ({ ...member, change: (currentByIri.has(member.iri!) ? "unchanged" : "added") as MemberChange }))
     .sort(byName);
 
   const added = updated.filter(member => member.change === "added").length;
