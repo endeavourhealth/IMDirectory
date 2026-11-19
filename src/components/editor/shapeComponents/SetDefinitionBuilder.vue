@@ -63,6 +63,7 @@
     <ECLBuilder
       v-if="showDialog"
       :query="eclQuery.query"
+      :setIri="savedSetIri"
       :showDialog="showDialog"
       :showNames="showNames"
       @closeDialog="() => (showDialog = false)"
@@ -80,16 +81,13 @@
 
 <script lang="ts" setup>
 import { Ref, computed, inject, onMounted, ref, watch } from "vue";
-
 import { AlertDialog } from "@endeavour/vue-library/components";
 import { useCopyToClipboard } from "@endeavour/vue-library/composables";
 import { IM } from "@endeavour/vue-library/enums";
 import { isArrayHasLength, isObjectHasKeys } from "@endeavour/vue-library/helpers";
 import type { PropertyShape, SearchResultSummary, TTEntity } from "@endeavour/vue-library/models";
 import { useDialogStore } from "@endeavour/vue-library/stores";
-
 import { useDialog } from "primevue/usedialog";
-
 import QueryDisplay from "@/components/directory/viewer/QueryDisplay.vue";
 import MembersPreview from "@/components/directory/viewer/set/MembersPreview.vue";
 import ECLBuilder from "@/components/imquery/ECLBuilder.vue";
@@ -98,7 +96,6 @@ import { EditorMode } from "@/enums";
 import injectionKeys from "@/injectionKeys/injectionKeys";
 import { type ECLQueryRequest } from "@/models";
 import { EclService } from "@/services";
-
 import AddByCodeList from "./setDefinition/AddByCodeList.vue";
 
 interface Props {
@@ -137,6 +134,9 @@ const highlightDiv = ref<HTMLDivElement | null>(null);
 const lastValidEcl: Ref<string> = ref("");
 const showMembersDialog = ref(false);
 const initialised = ref(false);
+
+// Only a set that has already been saved has members to compare a new definition against
+const savedSetIri = computed(() => (props.mode === EditorMode.EDIT ? (editorEntity.value[IM.ID] as string | undefined) : undefined));
 
 const key = props.shape.path.iri;
 const buttonOptions = [
@@ -258,6 +258,10 @@ async function processProps() {
     ecl.value = eclQuery.value.ecl!;
     lastValidEcl.value = ecl.value;
   } else {
+    if (editorEntity.value && editorEntity.value[IM.ID]) {
+      ecl.value = await EclService.getEclFromMembers(editorEntity.value[IM.ID] as string);
+      lastValidEcl.value = ecl.value;
+    }
     initialised.value = true;
   }
 }
@@ -369,18 +373,6 @@ Textarea {
   flex-flow: row;
   gap: 1rem;
   margin: 1rem 0 1rem 0;
-}
-
-.title-bar {
-  display: flex;
-  flex-flow: row nowrap;
-  justify-content: center;
-  gap: 0.25rem;
-  width: 100%;
-}
-
-.required {
-  color: var(--p-red-500);
 }
 
 #definition-panel-container:deep(.p-tabview-panels) {

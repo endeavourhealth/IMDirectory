@@ -6,6 +6,7 @@ const path = require("path");
 require("dotenv").config();
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:8082";
+const PRIVATE_MODE = process.env.MODE === "private";
 let currentSpec, currentScenario;
 
 gauge.customScreenshotWriter = async function () {
@@ -34,17 +35,18 @@ afterScenario(async () => {
 
 step("Open IMDirectory", async () => {
   await pw.page.goto(`${BASE_URL}/`);
-  await pw.page.waitForSelector('[data-testid="license-dialog"]');
-  await pw.page.click('[data-testid="agree-button"]');
-  await pw.page.waitForSelector("#cookies-sidebar");
-  await pw.page.click('[data-testid="accept-all-cookies"]');
-  await pw.page.waitForSelector("#cookies-sidebar", { state: "hidden" });
-});
 
-step("Login", async () => {
-  await pw.page.waitForSelector('[data-testid="account-menu"]');
-  await pw.page.click('[data-testid="account-menu"]');
-  await pw.page.click("#account-menu >> text=Login");
+  if (!PRIVATE_MODE) {
+    await pw.page.waitForSelector('[data-testid="license-dialog"]');
+    await pw.page.click('[data-testid="agree-button"]');
+    await pw.page.waitForSelector("#cookies-sidebar");
+    await pw.page.click('[data-testid="accept-all-cookies"]');
+    await pw.page.waitForSelector("#cookies-sidebar", { state: "hidden" });
+
+    await pw.page.waitForSelector('[data-testid="account-menu"]');
+    await pw.page.click('[data-testid="account-menu"]');
+    await pw.page.click("#account-menu >> text=Login");
+  }
 
   const username = process.env.TEST_USERNAME || "testuser";
   const password = process.env.TEST_PASSWORD || "testpass";
@@ -54,6 +56,15 @@ step("Login", async () => {
   await pw.page.click("button >> text=Sign In");
 
   await pw.page.waitForSelector("#topbar");
+
+  if (PRIVATE_MODE) {
+    await pw.page.waitForSelector('[data-testid="license-dialog"]');
+    await pw.page.click('[data-testid="agree-button"]');
+    await pw.page.waitForSelector("#cookies-sidebar");
+    await pw.page.click('[data-testid="accept-all-cookies"]');
+    await pw.page.waitForSelector("#cookies-sidebar", { state: "hidden" });
+  }
+
   const favourites = pw.page.locator(".favourites-container").filter({ hasText: "No favourites" });
   try {
     await favourites.waitFor({ state: "visible", timeout: 1000 });

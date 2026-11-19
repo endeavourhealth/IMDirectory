@@ -47,10 +47,13 @@ coverage
 .env
 
 /tests/e2e/outputs
-env/default/default.properties
-/env
+env/default
 /specs/logs
 /specs/screenshots
 /specs/test_reports/html-report/css
 /specs/test_reports/html-report/docs/specs
 /specs/test_reports
+
+# Allow committed env templates
+!.env.example
+!.env.mock.example

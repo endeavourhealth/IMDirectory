@@ -1,10 +1,17 @@
 import { parseApiResponse } from "@endeavour/vue-library/helpers";
-import { type Query, type SearchResponse, SearchResponseSchema } from "@endeavour/vue-library/models";
-
+import { type PageableNode, type Query, type SearchResponse, SearchResponseSchema } from "@endeavour/vue-library/models";
 import { type ECLQueryRequest, ECLQueryRequestSchema } from "@/models";
-
 import Env from "./Env";
 import api from "./api";
+
+
+
+
+
+
+
+
+
 
 const API_URL = Env.API + "api/ecl/protected";
 
@@ -20,7 +27,12 @@ const EclService = {
   async getEcl(query: Query): Promise<string> {
     return await api.post(API_URL + "/ecl", { query: query });
   },
-
+  async getEclFromMembers(iri: string,controller?: AbortController): Promise<string> {
+    return await api.get(API_URL + "/protected/eclfrommembers", {
+      params: { iri: iri},
+      signal: controller?.signal
+    });
+  },
   async getQueryFromECL(ecl: string, raw: boolean = false): Promise<ECLQueryRequest> {
     const result = await api.post(
       API_URL + "/queryFromEcl",

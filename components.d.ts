@@ -145,6 +145,7 @@ declare module 'vue' {
     ImqueryMatchContentDisplay: typeof import('./src/components/imquery/MatchContentDisplay.vue')['default']
     ImqueryMatchContentEditor: typeof import('./src/components/imquery/MatchContentEditor.vue')['default']
     ImqueryMatchEditor: typeof import('./src/components/imquery/MatchEditor.vue')['default']
+    ImqueryMembersComparison: typeof import('./src/components/imquery/MembersComparison.vue')['default']
     ImqueryParameterSelect: typeof import('./src/components/imquery/ParameterSelect.vue')['default']
     ImqueryPropertySelector: typeof import('./src/components/imquery/PropertySelector.vue')['default']
     ImqueryQueryEditor: typeof import('./src/components/imquery/QueryEditor.vue')['default']
@@ -168,6 +169,7 @@ declare module 'vue' {
     InputText: typeof import('primevue/inputtext')['default']
     Listbox: typeof import('primevue/listbox')['default']
     Menu: typeof import('primevue/menu')['default']
+    Message: typeof import('primevue/message')['default']
     MultiSelect: typeof import('primevue/multiselect')['default']
     OrganizationChart: typeof import('primevue/organizationchart')['default']
     Panel: typeof import('primevue/panel')['default']
@@ -223,6 +225,7 @@ declare module 'vue' {
     ToggleButton: typeof import('primevue/togglebutton')['default']
     ToggleSwitch: typeof import('primevue/toggleswitch')['default']
     Tree: typeof import('primevue/tree')['default']
+    TreeSelect: typeof import('primevue/treeselect')['default']
     UprnAddressFileDownload: typeof import('./src/components/uprn/AddressFileDownload.vue')['default']
     UprnAddressFileWorkflow: typeof import('./src/components/uprn/AddressFileWorkflow.vue')['default']
     UprnConsent: typeof import('./src/components/uprn/UprnConsent.vue')['default']
@@ -244,7 +247,6 @@ declare module 'vue' {
   }
   export interface GlobalDirectives {
     Ripple: typeof import('primevue/ripple')['default']
-    StyleClass: typeof import('primevue/styleclass')['default']
     Tooltip: typeof import('primevue/tooltip')['default']
   }
 }

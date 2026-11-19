@@ -5,28 +5,32 @@
       v-model:group="group"
       v-model:parent="parent"
       :clauseType="'Match'"
+      :eclQuery="true"
       :index="index"
       :operator="operator"
       :parentOperator="parentOperator as Bool"
       :parentType="'Match'"
       :rootBool="rootBool"
-      :eclQuery="true"
     />
 
     <div class="nested-match-container">
       <div v-for="(item, subIndex) in boolGroup" :key="item.uuid">
         <ECLExpressionConstraint
+          v-model:exclude="boolGroup![subIndex].notExists"
           v-model:match="boolGroup![subIndex] as Query"
           v-model:parent="match"
           v-model:parentGroup="group"
           :activeInputId="activeInputId"
           :canCheck="boolGroup!.length > 2"
+          :canUngroup="boolGroup!.length > 1 && !rootBool"
           :index="subIndex"
           :parentIndex="index"
           :parentOperator="operator"
           :rootBool="false"
           @activateInput="activeInputId = $event"
           @rationalise="onRationalise"
+          @ungroup="onUngroup"
+          @updateExclusion="onUpdateExclusion"
         />
       </div>
       <div>
@@ -72,23 +76,41 @@
       />
     </div>
 
-    <div v-if="parentOperator">
-      <Select
-        :class="'exclusion-selector'"
-        :disabled="parentGroup.length > 0 && (!parentGroup.includes(index) || parentGroup.length === 1)"
-        :modelValue="exclude"
-        :options="getExclusionOptions()"
-        data-testid="operator-selector"
-        option-label="label"
-        option-value="value"
-        @update:modelValue="updateExclusion"
-      >
-        <template #option="slotProps">
-          <div v-tooltip="slotProps.option.tooltip" class="dropdown-labels flex items-center" style="min-height: 1rem">
-            <div>{{ slotProps.option.label }}</div>
-          </div>
-        </template>
-      </Select>
+    <div v-if="parentOperator" class="flex shrink-0 flex-row items-center gap-1">
+      <div>
+        <Select
+          :class="'operator-selector'"
+          :modelValue="parentOperator"
+          :options="getBooleanOptions('match', index)"
+          option-label="label"
+          option-value="value"
+          @update:modelValue="updateOperator"
+        >
+          <template #option="slotProps">
+            <div v-tooltip="slotProps.option.tooltip" class="dropdown-labels flex items-center">
+              <div>{{ slotProps.option.label }}</div>
+            </div>
+          </template>
+        </Select>
+      </div>
+      <div>
+        <Select
+          :class="'exclusion-selector'"
+          :disabled="parentGroup.length > 0 && (!parentGroup.includes(index) || parentGroup.length === 1)"
+          :modelValue="exclude"
+          :options="getExclusionOptions()"
+          data-testid="operator-selector"
+          option-label="label"
+          option-value="value"
+          @update:modelValue="updateExclusion"
+        >
+          <template #option="slotProps">
+            <div v-tooltip="slotProps.option.tooltip" class="dropdown-labels flex items-center" style="min-height: 1rem">
+              <div>{{ slotProps.option.label }}</div>
+            </div>
+          </template>
+        </Select>
+      </div>
     </div>
 
     <div v-if="match.is">
@@ -96,31 +118,40 @@
         <div v-if="canCheck" class="group-checkbox">
           <Checkbox
             v-model="subgroupCheck"
-            v-tooltip="'Select to build boolean subgroup'"
+            v-tooltip="`Select to add to a ${subOperator} subgroup`"
             :inputId="'group' + index"
             binary
             data-testid="group-checkbox"
             name="Group"
             @update:modelValue="onCheckGroupChange"
           />
-        </div>
-        <div v-if="parentGroup.includes(index) && parentGroup.length > 1">
           <Button
-            v-tooltip="'Click to create boolean subgroup'"
-            :label="index === parentGroup[0] ? '(' : ')'"
-            :severity="'secondary'"
-            @click="onCreateSubgroup"
+            v-if="canSubGroup"
+            v-tooltip="`Click to create ${subOperator} subgroup from checked entries`"
+            label="{}"
+            text
+            @click.stop="createSubgroup()"
           />
         </div>
+        <div v-else-if="canUngroup">
+          <Button v-tooltip="`Click to revert to  ${subOperator}`" label="}{" text @click.stop="ungroup()" />
+        </div>
+
         <div class="concept-selector-container">
-          <ConceptSelector v-model:node="match.is" :activeInputId="activeInputId" :parent="parent" @update-match="updateMatch" />
+          <ConceptSelector ref="conceptSelector" v-model:node="match.is" :parent="parent" @update-match="updateMatch" />
         </div>
         <div v-if="match.is.invalid">
           <Button v-tooltip="'Value is invalid for property'" icon="fa-solid fa-exclamation" severity="danger" />
         </div>
-        <div class="add-group">
-          <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="Add attribute" type="button" @click="addRefinement()" />
+        <div class="stack">
+          <div class="add-group">
+            <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="concept" type="button" @click="addRefinement()" />
+          </div>
+          <div class="add-group">
+            <Button class="add-button" data-testid="add-refinement-button" icon="fa-solid fa-plus" label="attribute" type="button" @click="addRefinement()" />
+          </div>
         </div>
+
         <div class="add-group">
           <Button class="delete-button" icon="fa-solid fa-trash" @click.stop="deleteMatch" />
         </div>
@@ -148,15 +179,18 @@
   </div>
 </template>
 
+<script lang="ts">
+import { ref as moduleRef } from "vue";
+
+const pendingFocusUuid = moduleRef<string | undefined>();
+</script>
+
 <script lang="ts" setup>
-import { Ref, computed, onMounted, ref, watch } from "vue";
-
-import { Bool, QUERY } from "@endeavour/vue-library/enums";
-import { type Node, Query, type QueryRequest, QueryRequestSchema, type TTIriRef, type Where } from "@endeavour/vue-library/models";
-
-import Button from "primevue/button";
 import { v4 } from "uuid";
-
+import { Ref, computed, nextTick, onMounted, ref, watch } from "vue";
+import { Bool, Entail, QUERY } from "@endeavour/vue-library/enums";
+import { type Node, Query, type QueryRequest, type TTIriRef, type Where } from "@endeavour/vue-library/models";
+import Button from "primevue/button";
 import BooleanEditor from "@/components/imquery/BooleanEditor.vue";
 import ECLRefinement from "@/components/imquery/ECLRefinement.vue";
 import { onDragEnd, onDragOver, onDragStart, onDrop } from "@/composables/useDragContext";
@@ -166,13 +200,14 @@ import {
   createNewBoolGroup,
   getBoolGroup,
   getBooleanOperator,
+  getBooleanOptions,
   getExclusionOptions,
   getIsRoleGroup,
   manageRoleGroup,
+  removeSubgroup,
   updateFocusConcepts
 } from "@/helpers/buildQuery";
 import { QueryService } from "@/services";
-
 import ConceptSelector from "./ConceptSelector.vue";
 
 interface Props {
@@ -181,20 +216,25 @@ interface Props {
   rootBool: boolean;
   includeSubtypes?: boolean;
   canCheck?: boolean;
+  canUngroup?: boolean;
   parentIndex: number;
+  autoFocus?: boolean;
 }
+type BooleanOperator = "and" | "or";
 const props = defineProps<Props>();
-const match = defineModel<Query>("match", { default: {} });
+const match = defineModel<Query>("match", { default: () => ({}) });
 const parent = defineModel<Query | undefined>("parent") as Ref<Query | undefined>;
-const parentGroup = defineModel<number[]>("parentGroup", { default: [] });
+const parentGroup = defineModel<number[]>("parentGroup", { default: () => [] });
 const activeInputId = defineModel<string>("activeInputId", { default: "" });
 const exclude = defineModel<boolean>("exclude", { default: false });
 const group: Ref<number[]> = ref([]);
 const emit = defineEmits<{
   (e: "updateBool"): void;
   (e: "rationalise"): void;
+  (e: "activateInput", value: string): void;
   (e: "includeSubtypesChanged"): void;
-  (e: "updateExclusion", value: boolean): void;
+  (e: "ungroup"): void;
+  (e: "updateExclusion"): void;
 }>();
 const isRoleGroup = computed(() => getIsRoleGroup(match.value.where));
 const propertySearch: Ref<QueryRequest | undefined> = ref(undefined);
@@ -207,13 +247,45 @@ const focusIris: Ref<string[]> = ref([]);
 const operator = computed(() => {
   return getBooleanOperator("Match", match.value);
 });
+const canSubGroup = computed(() => {
+  return parentGroup.value.length > 1;
+});
 const boolGroup = computed(() => {
   return getBoolGroup("Match", match.value);
+});
+const conceptSelector = ref<{ focus: () => void } | null>(null);
+const subOperator = computed(() => {
+  if (props.parentOperator === Bool.or) return "AND";
+  else return "OR";
 });
 
 onMounted(() => {
   init();
+  if (props.autoFocus || (pendingFocusUuid.value && pendingFocusUuid.value === match.value.uuid)) claimFocus();
 });
+
+// Handles focus requests for instances that are already mounted (e.g. passed down from a parent bool group)
+watch(pendingFocusUuid, uuid => {
+  if (uuid && uuid === match.value.uuid) claimFocus();
+});
+
+function updateOperator(val: BooleanOperator) {
+  const query = parent.value as Query;
+  if (query.or) {
+    query.and = query.or;
+    delete query.or;
+  } else {
+    query.or = query.and;
+    delete query.and;
+  }
+  emit("rationalise");
+}
+
+function claimFocus() {
+  pendingFocusUuid.value = undefined;
+  if (match.value.is) nextTick(() => conceptSelector.value?.focus());
+  else if (boolGroup.value?.length) pendingFocusUuid.value = boolGroup.value[0].uuid;
+}
 
 watch(isRoleGroup, (newValue, oldValue) => {
   if (newValue != oldValue) {
@@ -222,25 +294,51 @@ watch(isRoleGroup, (newValue, oldValue) => {
     }
   }
 });
-function onCreateSubgroup() {
+function createSubgroup() {
   createNewBoolGroup(parent.value as Query, parentGroup.value);
   parentGroup.value = [];
+}
+function onUngroup() {
+  removeSubgroup(match.value, parent.value as Where, props.index);
+  group.value = [];
+}
+
+function ungroup() {
+  emit("ungroup");
 }
 
 function init() {
   if (!match.value.uuid) match.value.uuid = v4();
   if (!match.value.or && !match.value.and && !match.value.is) {
-    match.value.is = { descendantsOrSelfOf: true } as Node;
+    match.value.is = { entails: Entail.descendantsOrSelfOf } as Node;
   }
   maintainFocusConcepts();
 }
 
 function addConcept() {
   addConceptToGroup(match.value);
+  if (match.value.is) {
+    pendingFocusUuid.value = match.value.uuid;
+    nextTick(() => conceptSelector.value?.focus());
+  } else {
+    const items = match.value.or ?? match.value.and;
+    pendingFocusUuid.value = items?.[items.length - 1]?.uuid;
+  }
   maintainFocusConcepts();
 }
 function updateExclusion() {
   exclude.value = !exclude.value;
+  emit("updateExclusion");
+}
+function onUpdateExclusion() {
+  if (match.value.and && match.value.and.length === 2) {
+    if (match.value.and[0].or && !match.value.and[1].notExists) {
+      match.value.or = [];
+      match.value.or.push(...match.value.and[0].or);
+      match.value.or.push(match.value.and[1]);
+      delete match.value.and;
+    }
+  }
 }
 
 function updateMatch() {
@@ -261,6 +359,7 @@ function onRationalise() {
 function deleteMatch() {
   if (!props.parentOperator) {
     delete match.value.is;
+    emit("rationalise");
     maintainFocusConcepts();
     return;
   }
@@ -286,7 +385,7 @@ function addRefinement() {
     updateQueryForPropertySearch();
     updateIsValidPropertySearch();
   }
-  const where = { uuid: v4(), descendantsOrSelfOf: true, is: [{ descendantsOrSelfOf: true }] } as Where;
+  const where = { uuid: v4(), entails: Entail.descendantsOrSelfOf, is: [{ entails: Entail.descendantsOrSelfOf }] } as Where;
   if (match.value.where) {
     if (match.value.where.and) match.value.where.and.push(where);
     else if (match.value.where.or) match.value.where.or.push(where);

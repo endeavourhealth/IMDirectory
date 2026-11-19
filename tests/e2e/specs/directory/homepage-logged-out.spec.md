@@ -38,12 +38,10 @@ This specification describes the homepage functionality of IMDirectory.
 
 * Open IMDirectory
 * Click shortcut "Creator"
-* Login required message appears
-* Close tab
+* Creator page title is displayed
 
 ## Quicklinks - Code templates
 
 * Open IMDirectory
 * Click shortcut "Code templates"
-* Login required message appears
-
+* Code generator page title is displayed

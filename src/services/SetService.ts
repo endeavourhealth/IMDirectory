@@ -34,6 +34,7 @@ const SetService = {
     return parseApiResponse(result, PageableNodeSchema);
   },
 
+
   async getMembersFromQuery(query: Query, pageIndex: number, pageSize: number): Promise<PageableNode> {
     const request = { query: query, page: pageIndex, size: pageSize } as ECLQueryRequest;
     const result = await api.post(API_URL + "/protected/membersFromQuery", request);

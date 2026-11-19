@@ -3,7 +3,6 @@
 This specification describes the top bar functionality for logged-in users in IMDirectory
 
 * Open IMDirectory
-* Login
 
 ## Can route to my account
 * Click account menu
@@ -14,4 +13,3 @@ This specification describes the top bar functionality for logged-in users in IM
 * Click account menu
 * Click "Logout" in account menu
 * Confirm dialog
-* Login button is displayed

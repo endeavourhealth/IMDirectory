@@ -61,7 +61,7 @@
 <script setup lang="ts">
 import { Ref, computed, inject, onMounted, ref, watch } from "vue";
 
-import { IM, QUERY, SNOMED, ToastSeverity } from "@endeavour/vue-library/enums";
+import { IM, QUERY, SNOMED, ToastSeverity,Entail } from "@endeavour/vue-library/enums";
 import { type Node, NodeSchema, type QueryRequest, type SearchResultSummary, type TTIriRef, type Where } from "@endeavour/vue-library/models";
 
 import { isEqual } from "lodash-es";
@@ -78,8 +78,8 @@ interface Props {
 }
 
 const props = defineProps<Props>();
-const where = defineModel<Where>("where", { default: {} });
-const node = defineModel<Node>("node", { default: {} });
+const where = defineModel<Where>("where", { default: () => ({}) });
+const node = defineModel<Node>("node", { default: () => ({}) });
 const emit = defineEmits(["deleteProperty"]);
 const valueConstraintOperator: Ref<string | undefined> = ref<"<<">();
 const hoverAddValue = ref(false);
@@ -144,7 +144,7 @@ function deleteValue() {
     } else {
       delete node.value.iri;
       delete node.value.name;
-      node.value.descendantsOrSelfOf = true;
+      node.value.entails=Entail.descendantsOrSelfOf;
     }
   } else where.value!.is!.splice(props.index, 1);
 }
