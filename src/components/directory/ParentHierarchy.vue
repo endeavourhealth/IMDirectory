@@ -29,7 +29,7 @@
 import { Ref, computed, onMounted, ref, watch } from "vue";
 
 import { IM } from "@endeavour/vue-library/enums";
-import type { TTIriRef } from "@endeavour/vue-library/interfaces";
+import type { TTIriRef } from "@endeavour/vue-library/models";
 
 import { MenuItem } from "primevue/menuitem";
 
@@ -123,7 +123,7 @@ function onClick(event: MouseEvent, item: MenuItem) {
   background: var(--p-content-background);
   border: 1px solid var(--p-textarea-border-color);
   border-radius: var(--p-textarea-border-radius);
-  overflow: a;
+  overflow: auto;
 }
 
 .table-header {

@@ -101,7 +101,7 @@
       <Button
         id="account-button"
         v-tooltip.left="'Account'"
-        v-if="currentUser && isLoggedIn"
+        v-if="isUser(currentUser)"
         class="p-button-rounded p-button-text p-button-plain p-button-lg p-button-icon-only topbar-end-button"
         @click="openUserMenu"
         aria-haspopup="true"
@@ -150,9 +150,13 @@
 <script setup lang="ts">
 import { Ref, computed, onMounted, ref, watch } from "vue";
 
+import { hasRole, isUser } from "@endeavour/vue-library";
+import { AlertDialog } from "@endeavour/vue-library/components";
 import { useChangeFontSize, useChangeThemeOptions } from "@endeavour/vue-library/composables";
+import { presets, primaryColors, surfaceColors } from "@endeavour/vue-library/constants";
 import { FontSize, PrimeVueColors, PrimeVuePresetThemes, UserRole } from "@endeavour/vue-library/enums";
 import { useUserStore } from "@endeavour/vue-library/stores";
+import { useDialogStore } from "@endeavour/vue-library/stores";
 
 import { useCookies } from "@vueuse/integrations";
 import Button from "primevue/button";
@@ -161,10 +165,8 @@ import { useDialog } from "primevue/usedialog";
 import { useToast } from "primevue/usetoast";
 import { useRouter } from "vue-router";
 
-import AlertDialog from "@/components/shared/dynamicDialogs/AlertDialog.vue";
 import { useDirectService } from "@/composables/useDirectService";
-import { CodeGenService, FilerService, SecurityService } from "@/services";
-import { useDialogStore } from "@/stores/dialogStore";
+import { AuthService, CodeGenService, FilerService } from "@/services";
 import { useSharedStore } from "@/stores/sharedStore";
 
 import Shortcut from "../directory/landingPage/Shortcut.vue";
@@ -197,27 +199,9 @@ const accountItems: Ref<MenuItem[]> = ref([]);
 const uploadDownloadItems: Ref<MenuItem[]> = ref([]);
 const appItems: Ref<{ icon: string; command?: () => void; url?: string; label: string; color: string; size: number; visible?: boolean }[]> = ref([]);
 const themeOptions: Ref<{ primaryColours: PrimeVueColors[]; surfaceColours: PrimeVueColors[]; presets: PrimeVuePresetThemes[] }> = ref({
-  primaryColours: [
-    PrimeVueColors.EMERALD,
-    PrimeVueColors.GREEN,
-    PrimeVueColors.LIME,
-    PrimeVueColors.RED,
-    PrimeVueColors.ORANGE,
-    PrimeVueColors.AMBER,
-    PrimeVueColors.YELLOW,
-    PrimeVueColors.TEAL,
-    PrimeVueColors.CYAN,
-    PrimeVueColors.SKY,
-    PrimeVueColors.BLUE,
-    PrimeVueColors.INDIGO,
-    PrimeVueColors.VIOLET,
-    PrimeVueColors.PURPLE,
-    PrimeVueColors.FUCHSIA,
-    PrimeVueColors.PINK,
-    PrimeVueColors.ROSE
-  ],
-  surfaceColours: [PrimeVueColors.SLATE, PrimeVueColors.GRAY, PrimeVueColors.ZINC, PrimeVueColors.NEUTRAL, PrimeVueColors.STONE],
-  presets: [PrimeVuePresetThemes.AURA, PrimeVuePresetThemes.LARA, PrimeVuePresetThemes.NORA, PrimeVuePresetThemes.MATERIAL]
+  primaryColours: primaryColors,
+  surfaceColours: surfaceColors,
+  presets: presets
 });
 const preset = ref(themeOptions.value.presets[0]);
 const darkMode = ref(false);
@@ -248,7 +232,7 @@ watch(includeUserGraph, async newValue => {
 
 watch(currentUser, async newValue => {
   if (newValue) {
-    hasPermissionDocumentWrite.value = currentUser.value?.roles.includes(UserRole.EDITOR)!!;
+    hasPermissionDocumentWrite.value = hasRole(newValue, UserRole.EDITOR);
   } else hasPermissionDocumentWrite.value = false;
 });
 
@@ -261,8 +245,8 @@ onMounted(async () => {
   setUserMenuItems();
   setAppMenuItems();
   setUploadDownloadMenuItems();
-  if (isLoggedIn.value) {
-    hasPermissionDocumentWrite.value = currentUser.value?.roles.includes(UserRole.EDITOR)!!;
+  if (isUser(currentUser.value)) {
+    hasPermissionDocumentWrite.value = hasRole(currentUser.value, UserRole.EDITOR);
   }
 });
 
@@ -291,12 +275,12 @@ function setUserMenuItems(): void {
     {
       label: "Login",
       icon: "fa-solid fa-fw fa-user",
-      command: async () => (window.location.href = await SecurityService.getLoginUrl())
+      command: async () => await AuthService.login()
     },
     {
       label: "Register",
       icon: "fa-solid fa-fw fa-user-plus",
-      command: async () => (window.location.href = await SecurityService.getRegisterUrl())
+      command: async () => await AuthService.register()
     },
     {
       separator: true
@@ -367,15 +351,14 @@ async function logout() {
     })
     .then(async result => {
       if (result.confirm) {
-        await SecurityService.logout();
-        location.reload();
+        userStore.updateCurrentUser(undefined);
+        await AuthService.logout();
       }
     });
 }
 
 async function goToMyProfile() {
-  const url = await SecurityService.getProfileUrl();
-  if (url) window.location.href = url;
+  window.location.href = AuthService.profileUrl();
 }
 
 function openUploadDownloadMenu(event: MouseEvent): void {
@@ -589,7 +572,7 @@ async function openAdminToolbox() {
 .theme-container {
   display: flex;
   flex-flow: column nowrap;
-  width: 18rem;
+  width: 19rem;
 }
 
 .color-picker {

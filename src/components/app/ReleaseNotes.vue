@@ -55,9 +55,10 @@ import { Ref, nextTick, onMounted, ref } from "vue";
 
 import { REPO } from "@endeavour/vue-library/enums";
 import { isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import type { GithubRelease } from "@endeavour/vue-library/interfaces";
+import type { GithubRelease } from "@endeavour/vue-library/models";
 
 import { sanitizeUrl } from "@braintree/sanitize-url";
+import { VueShowdown } from "vue-showdown";
 
 import { GithubService } from "@/services";
 import { useSharedStore } from "@/stores/sharedStore";

@@ -10,7 +10,7 @@
         <ProgressSpinner strokeWidth="8" />
       </div>
       <div v-else class="children-container concept-colours">
-        <div v-for="(rg, rgIndex) in roleGroups" class="roleGroup concept-colours" v-bind:key="rgIndex">
+        <div v-for="(rg, rgIndex) in roleGroups" v-bind:key="rgIndex" class="roleGroup concept-colours">
           <div :class="invalidGroups.find(o => o.groupIndex === rgIndex) && invalid && showValidation ? 'error-message' : ''">
             <span v-if="invalidGroups.find(o => o.groupIndex === rgIndex) && invalid && showValidation" class="error-message">{{
               invalidGroups.find(o => o.groupIndex === rgIndex).errorMessage
@@ -43,11 +43,12 @@
 <script lang="ts" setup>
 import { ComputedRef, Ref, computed, inject, onMounted, ref, watch } from "vue";
 
-import { IM, NAMESPACE, RDFS, SNOMED } from "@endeavour/vue-library/enums";
-import { TypeGuards, isArrayHasLength, isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import type { ExtendedTTEntity, PropertyShape, QueryRequest } from "@endeavour/vue-library/interfaces";
+import { IM, NAMESPACE, SNOMED,Entail } from "@endeavour/vue-library/enums";
+import { isArrayHasLength, isObjectHasKeys } from "@endeavour/vue-library/helpers";
+import { type PropertyShape, type QueryRequest, type TTEntity, TTEntitySchema, isTTIriRef } from "@endeavour/vue-library/models";
 
 import { cloneDeep, isArray } from "lodash-es";
+import z from "zod";
 
 import AutocompleteSearchBar from "@/components/shared/AutocompleteSearchBar.vue";
 import { EditorMode } from "@/enums";
@@ -60,10 +61,15 @@ const props = defineProps<{
   value?: any;
 }>();
 
-interface Role {
-  key: { iri: string; name: string };
-  value: { iri: string; name: string };
+const RoleSchema = z.strictObject({
+  key: z.strictObject({ iri: z.string(), name: z.string() }),
+  value: z.strictObject({ iri: z.string(), name: z.string() })
+});
+type Role = z.output<typeof RoleSchema>;
+function isRole(value: unknown): value is Role {
+  return RoleSchema.safeParse(value).success;
 }
+
 const entityUpdate = inject(injectionKeys.editorEntity)?.updateEntity;
 const deleteEntityKey = inject(injectionKeys.editorEntity)?.deleteEntityKey;
 const editorEntity = inject(injectionKeys.editorEntity)!.editorEntity;
@@ -139,22 +145,21 @@ async function processProps() {
   loading.value = true;
   const newData: any[] = [];
   if (props.value && isArrayHasLength(props.value)) {
-    for (const role of props.value) {
-      await processRole(newData, role);
-    }
+    const roles = props.value.filter(isRole);
+    const labels = await EntityService.getLabels(roles.flatMap(role => Object.keys(role).filter(key => key !== IM.GROUP_NUMBER)));
+    for (const role of roles) processRole(newData, role, labels);
   }
   roleGroups.value = newData;
   loading.value = false;
 }
 
-async function processRole(newData: any[], role: Role) {
+function processRole(newData: any[], role: Role, labels: Map<string, string>) {
   const grp: any[] = [];
   newData.push(grp);
   if (isObjectHasKeys(role, [IM.GROUP_NUMBER])) {
     for (const [key, value] of Object.entries(role)) {
-      if (key !== IM.GROUP_NUMBER && isArray(value) && value.every(item => TypeGuards.isTTIriRef(item))) {
-        const keyName = await EntityService.getPartialEntity(key, [RDFS.LABEL]);
-        grp.push({ key: { iri: key, name: keyName[RDFS.LABEL] ?? "" }, value: value[0] });
+      if (key !== IM.GROUP_NUMBER && isArray(value) && value.every(item => isTTIriRef(item))) {
+        grp.push({ key: { iri: key, name: labels.get(key) ?? "" }, value: value[0] });
       }
     }
   }
@@ -163,12 +168,10 @@ async function processRole(newData: any[], role: Role) {
 const request: QueryRequest = {
   query: {
     activeOnly: true,
-    is: [
-      {
-        iri: SNOMED.ATTRIBUTE,
-        descendantsOrSelfOf: true
-      }
-    ]
+    is: {
+      iri: SNOMED.ATTRIBUTE,
+      entails: Entail.descendantsOrSelfOf
+    }
   }
 };
 
@@ -211,12 +214,12 @@ function isGroupValid(group: Role[]): boolean {
       pair.value = { iri: "", name: "" };
     }
     if (pair.key.iri != IM.GROUP_NUMBER) {
-      if (!isObjectHasKeys(pair.key, ["iri"]) && (!pair?.key?.iri || pair.key.iri == "")) {
+      if (!pair?.key?.iri) {
         specificValidationErrorMessage.value = "Missing role property.";
         invalid.value = true;
         return false;
       }
-      if (!isObjectHasKeys(pair.value, ["iri"]) && (!pair?.value?.iri || "" === pair.value.iri || null === pair.value.iri)) {
+      if (!pair?.value?.iri) {
         specificValidationErrorMessage.value = "Missing role quantifier.";
         invalid.value = true;
         return false;
@@ -228,13 +231,13 @@ function isGroupValid(group: Role[]): boolean {
 }
 
 function updateEntity() {
-  const groups: ExtendedTTEntity = {};
+  const groups = {} as TTEntity;
   groups[IM.ROLE_GROUP] = [];
 
   for (const rg in roleGroups.value) {
     const group: any = {};
     group[IM.GROUP_NUMBER] = rg;
-    groups[IM.ROLE_GROUP].push(group);
+    if (isArray(groups[IM.ROLE_GROUP])) groups[IM.ROLE_GROUP].push(group);
     for (const pair of roleGroups.value[rg]) {
       if (isObjectHasKeys(pair.key, ["iri"]) && isObjectHasKeys(pair.value, ["iri"])) {
         group[pair.key.iri] = { iri: pair.value.iri, name: pair.value.name };

@@ -33,17 +33,17 @@
 <script setup lang="ts">
 import { Ref, computed, onMounted, ref, watch } from "vue";
 
+import { AlertDialog } from "@endeavour/vue-library/components";
 import { UserRole } from "@endeavour/vue-library/enums";
-import type { RoleRequest, Task } from "@endeavour/vue-library/interfaces";
+import { type RoleRequest, RoleRequestSchema, type Task } from "@endeavour/vue-library/models";
 import { useUserStore } from "@endeavour/vue-library/stores";
+import { useDialogStore } from "@endeavour/vue-library/stores";
 
 import { useConfirm } from "primevue/useconfirm";
 
 import SecurityService from "@/services/SecurityService";
 import WorkflowService from "@/services/WorkflowService";
-import { useDialogStore } from "@/stores/dialogStore";
 
-import AlertDialog from "../shared/dynamicDialogs/AlertDialog.vue";
 import TaskViewer from "./TaskViewer.vue";
 
 interface Props {
@@ -110,26 +110,29 @@ async function updateTask(task: Task) {
         label: "Update"
       },
       accept: async () => {
-        const updatedRoleRequest: RoleRequest = {
-          id: { iri: props.id },
-          role: selectedRole.value,
-          createdBy: task.createdBy,
-          type: task.type,
-          state: task.state,
-          assignedTo: task.assignedTo,
-          dateCreated: task.dateCreated,
-          history: task.history
-        };
-        await WorkflowService.updateRoleRequest(updatedRoleRequest).then(async () => {
-          await dialogStore.open(AlertDialog, {
-            props: { modal: true, style: { width: "30vw" } },
-            data: {
-              icon: "fa-regular fa-circle-check",
-              title: "Success",
-              text: "Role request successfully updated."
-            }
+        if (selectedRole.value) {
+          const updatedRoleRequest = RoleRequestSchema.parse({
+            id: { iri: props.id },
+            role: selectedRole.value,
+            createdBy: task.createdBy,
+            type: task.type,
+            state: task.state,
+            assignedTo: task.assignedTo,
+            dateCreated: task.dateCreated,
+            history: task.history,
+            hostUrl: window.location.origin
           });
-        });
+          await WorkflowService.updateRoleRequest(updatedRoleRequest).then(async () => {
+            await dialogStore.open(AlertDialog, {
+              props: { modal: true, style: { width: "30vw" } },
+              data: {
+                icon: "fa-regular fa-circle-check",
+                title: "Success",
+                text: "Role request successfully updated."
+              }
+            });
+          });
+        }
 
         editMode.value = false;
       }

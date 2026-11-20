@@ -1,15 +1,15 @@
 import { Ref } from "vue";
 
+import { AlertDialog } from "@endeavour/vue-library/components";
 import { IM, RDFS, SHACL } from "@endeavour/vue-library/enums";
-import { getFAIconFromType, isArrayHasLength } from "@endeavour/vue-library/helpers";
-import type { TTIriRef } from "@endeavour/vue-library/interfaces";
+import { getFAIconFromType, isArrayHasLength, isArrayOf } from "@endeavour/vue-library/helpers";
+import { type TTIriRef, isTTIriRef } from "@endeavour/vue-library/models";
+import { useDialogStore } from "@endeavour/vue-library/stores";
 
 import { MenuItem } from "primevue/menuitem";
 import type { TreeNode } from "primevue/treenode";
 
-import AlertDialog from "@/components/shared/dynamicDialogs/AlertDialog.vue";
 import { EntityService } from "@/services";
-import { useDialogStore } from "@/stores/dialogStore";
 
 import { useDirectService } from "./useDirectService";
 
@@ -30,31 +30,33 @@ export function useCreateNew() {
         command: {}
       }
     ];
-    selectionWrapperCopy[1].command = () => directService.edit(node.data, false);
+    selectionWrapperCopy[1].command = () => directService.edit(node.key, false);
 
-    const allowableTypes = await EntityService.getAllowableChildTypes(node.data);
+    const allowableTypes = await EntityService.getAllowableChildTypes(node.key);
     if (!isArrayHasLength(allowableTypes)) {
       return selectionWrapperCopy;
     }
     for (const allowableType of allowableTypes) {
-      const item = {
-        label: allowableType[RDFS.LABEL],
-        data: {
-          type: allowableType.iri,
-          property: allowableType[SHACL.PATH][0]["iri"].toString()
-        },
-        icon: getFAIconFromType([{ iri: allowableType.iri, name: allowableType[RDFS.LABEL] } as TTIriRef]).join(" "),
-        command: () => {}
-      };
-      if (allowableType.iri === IM.FOLDER) {
-        item.command = () => {
-          newFolderName.value = "";
-          newFolder.value = node;
+      if (typeof allowableType.iri === "string" && isArrayOf(allowableType[SHACL.PATH], isTTIriRef) && typeof allowableType[RDFS.LABEL] === "string") {
+        const item = {
+          label: allowableType[RDFS.LABEL],
+          data: {
+            type: allowableType.iri,
+            property: allowableType[SHACL.PATH][0]["iri"].toString()
+          },
+          icon: getFAIconFromType([{ iri: allowableType.iri, name: allowableType[RDFS.LABEL] } as TTIriRef]).join(" "),
+          command: () => {}
         };
-      } else {
-        item.command = () => directService.create(item.data.type, item.data.property, node.data);
+        if (allowableType.iri === IM.FOLDER) {
+          item.command = () => {
+            newFolderName.value = "";
+            newFolder.value = node;
+          };
+        } else {
+          item.command = () => directService.create(item.data.type, item.data.property, node.key);
+        }
+        if (selectionWrapperCopy[0].items) selectionWrapperCopy[0].items.push(item);
       }
-      if (selectionWrapperCopy[0].items) selectionWrapperCopy[0].items.push(item);
     }
     return selectionWrapperCopy;
   }

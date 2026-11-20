@@ -1,6 +1,7 @@
 import { computed } from "vue";
 
 import { UserRole } from "@endeavour/vue-library/enums";
+import { hasAnyRole, hasRole, isUser } from "@endeavour/vue-library/models";
 import { useUserStore } from "@endeavour/vue-library/stores";
 
 import { RouteLocationNormalized, Router } from "vue-router";
@@ -10,6 +11,7 @@ import { useSharedStore } from "@/stores/sharedStore";
 import { directToLogin } from "./intercepts";
 
 export async function requiresAuthGuard(to: RouteLocationNormalized, from: RouteLocationNormalized, router: Router): Promise<boolean> {
+  if (to.matched.some(record => record.meta.public)) return false;
   if (to.matched.some(record => record.meta.requiresAuth)) {
     const userStore = useUserStore();
     const isLoggedIn = computed(() => userStore.isLoggedIn);
@@ -39,7 +41,7 @@ export async function requiresRole(to: RouteLocationNormalized, from: RouteLocat
     }
 
     const currentUser = computed(() => userStore.currentUser);
-    const hasPermission: boolean = to.meta.requiresRole.some(r => currentUser.value?.roles.includes(r));
+    const hasPermission: boolean = hasAnyRole(currentUser.value!, to.meta.requiresRole);
 
     if (hasPermission) {
       return false;
@@ -71,7 +73,7 @@ export async function requiresOrganisation(iri: string | string[], to: RouteLoca
   if (to.matched.some(record => record.meta.requiresOrganisation)) {
     const userStore = useUserStore();
     let isEditAllowed = false;
-    if (userStore.isLoggedIn) isEditAllowed = userStore.currentUser?.roles.includes(UserRole.EDITOR)!!;
+    if (isUser(userStore.currentUser)) isEditAllowed = hasRole(userStore.currentUser, UserRole.EDITOR);
     if (!isEditAllowed) {
       await router.push({ name: "AccessDenied", params: { requiredAccess: iri.slice(0, iri.indexOf("#") + 1), accessType: "organisation" } });
       return true;

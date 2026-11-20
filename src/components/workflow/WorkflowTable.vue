@@ -51,10 +51,11 @@ import { Ref, onMounted, ref } from "vue";
 
 import { TaskType } from "@endeavour/vue-library/enums";
 import { formatDateTime } from "@endeavour/vue-library/helpers";
-import type { Task, TaskHistory, WorkflowResponse } from "@endeavour/vue-library/interfaces";
+import { type Task, type TaskHistory } from "@endeavour/vue-library/models";
 
 import { useRouter } from "vue-router";
 
+import type { WorkflowResponse } from "@/models";
 import WorkflowService from "@/services/WorkflowService";
 
 import TaskHistoryDialog from "./TaskHistoryDialog.vue";

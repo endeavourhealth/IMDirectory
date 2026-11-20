@@ -3,7 +3,6 @@
 This specification describes the query viewer functionality in IMDirectory
 
 * Open IMDirectory
-* Login
 * Open filters
 * Select concept type "Query"
 * Close filters

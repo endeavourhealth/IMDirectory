@@ -1,6 +1,5 @@
 <template>
-  <div v-if="loading" class="flex flex-row"><ProgressSpinner /></div>
-  <div v-if="!loading" id="members-table-container">
+  <div id="members-table-container">
     <DataTable
       :value="members"
       showGridlines
@@ -15,7 +14,8 @@
       :lazy="true"
       :paginator="true"
       :rowsPerPageOptions="[25, 50, 100]"
-      :rows="25"
+      v-model:first="first"
+      v-model:rows="pageSize"
       :totalRecords="totalCount"
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
       :currentPageReportTemplate="templateString"
@@ -44,7 +44,7 @@ import { Ref, onMounted, ref, watch } from "vue";
 
 import { IM } from "@endeavour/vue-library/enums";
 import { isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import type { Node, Query } from "@endeavour/vue-library/interfaces";
+import type { Node, Query } from "@endeavour/vue-library/models";
 
 import IMViewerLink from "@/components/shared/IMViewerLink.vue";
 import { EntityService, SetService } from "@/services";
@@ -65,7 +65,7 @@ const members: Ref<Node[] | undefined> = ref([]);
 
 const templateString = ref("Displaying {first} to {last} of [Loading...] concepts");
 const totalCount: Ref<number | undefined> = ref(0);
-const currentPage = ref(0);
+const first = ref(0);
 const pageSize = ref(25);
 
 watch(
@@ -87,6 +87,7 @@ onMounted(async () => {
 });
 
 async function init() {
+  first.value = 0;
   await getMembers();
   await setHasDefinition();
 }
@@ -103,33 +104,26 @@ async function setHasDefinition() {
 
 async function getMembers(): Promise<void> {
   loading.value = true;
-  if (props.entityIri) {
-    const paged = await SetService.getMembers(props.entityIri, true, currentPage.value + 1, pageSize.value);
-    members.value = paged.result;
-    totalCount.value = paged.totalCount;
-    templateString.value = "Displaying {first} to {last} of {totalRecords}  concepts";
-  } else if (props.eclQuery) {
-    const paged = await SetService.getMembersFromQuery(props.eclQuery, currentPage.value + 1, 15);
-    members.value = paged.result;
-    totalCount.value = paged.totalCount;
-    templateString.value = "Displaying {first} to {last} of {totalRecords} concepts";
+  try {
+    // The server page number is 1-based; derive it from the paginator's row offset
+    const page = Math.floor(first.value / pageSize.value) + 1;
+    let paged;
+    if (props.entityIri) paged = await SetService.getMembers(props.entityIri, true, page, pageSize.value);
+    else if (props.eclQuery) paged = await SetService.getMembersFromQuery(props.eclQuery, page, pageSize.value);
+    if (paged) {
+      members.value = paged.result;
+      totalCount.value = paged.totalCount;
+      templateString.value = "Displaying {first} to {last} of {totalRecords} concepts";
+    }
+  } finally {
+    loading.value = false;
   }
-  loading.value = false;
 }
 
-async function getPage(event: any) {
-  loading.value = true;
+async function getPage(event: { first: number; rows: number }) {
+  first.value = event.first;
   pageSize.value = event.rows;
-  currentPage.value = event.page;
-  if (props.entityIri) {
-    const pagedNewMembers = await SetService.getMembers(props.entityIri, true, currentPage.value + 1, pageSize.value);
-    members.value = pagedNewMembers.result;
-  } else if (props.eclQuery) {
-    const pagedNewMembers = await SetService.getMembersFromQuery(props.eclQuery, currentPage.value + 1, pageSize.value);
-    members.value = pagedNewMembers.result;
-  }
-
-  loading.value = false;
+  await getMembers();
 }
 
 function getEntailment(data: any) {

@@ -21,13 +21,15 @@ import { onMounted, ref } from "vue";
 
 import { useCopyToClipboard } from "@endeavour/vue-library/composables";
 import { IM, RDFS } from "@endeavour/vue-library/enums";
-import { isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import type { ExtendedTTEntity } from "@endeavour/vue-library/interfaces";
+import { isArrayOf, isObjectHasKeys } from "@endeavour/vue-library/helpers";
+import { type TTEntity, TTIriRefSchema, isTTEntity, isTTIriRef } from "@endeavour/vue-library/models";
+
+import { isArray, isString } from "lodash-es";
 
 import { EntityService } from "@/services";
 
 interface Props {
-  concept: ExtendedTTEntity;
+  concept: TTEntity;
 }
 
 const props = defineProps<Props>();
@@ -46,34 +48,38 @@ async function init() {
 
 async function generateExpression() {
   let result = "";
-  if (props.concept[IM.DEFINITIONAL_STATUS] && props.concept[IM.DEFINITIONAL_STATUS].length) {
+  if (isArrayOf(props.concept[IM.DEFINITIONAL_STATUS], isTTIriRef)) {
     for (const def of props.concept[IM.DEFINITIONAL_STATUS]) {
       if (def.iri === "http://endhealth.info/im#1251000252106") result += "===\t";
     }
   } else {
     result += "<<<\t";
   }
-  if (props.concept[RDFS.SUBCLASS_OF]) {
+  if (isArray(props.concept[RDFS.SUBCLASS_OF])) {
     for (let subclass in props.concept[RDFS.SUBCLASS_OF]) {
-      result += props.concept[RDFS.SUBCLASS_OF][subclass].iri.split("#")[1] + " |" + props.concept[RDFS.SUBCLASS_OF][subclass].name + "|";
+      if (isTTIriRef(props.concept[RDFS.SUBCLASS_OF][subclass]))
+        result += props.concept[RDFS.SUBCLASS_OF][subclass].iri.split("#")[1] + " |" + props.concept[RDFS.SUBCLASS_OF][subclass].name + "|";
       if (parseInt(subclass) < props.concept[RDFS.SUBCLASS_OF].length - 1) result += " +\n\t";
     }
   }
 
-  if (props.concept[IM.ROLE_GROUP] && props.concept[IM.ROLE_GROUP].length) {
+  if (isArrayOf(props.concept[IM.ROLE_GROUP], isTTEntity)) {
     result += " :\n";
+    for (const roleGroup of props.concept[IM.ROLE_GROUP]) delete roleGroup[IM.GROUP_NUMBER];
+    const labels = await EntityService.getLabels(props.concept[IM.ROLE_GROUP].flatMap(roleGroup => Object.keys(roleGroup)));
     for (let roleGroup of props.concept[IM.ROLE_GROUP]) {
       const newGroup = roleGroup;
-      delete newGroup[IM.GROUP_NUMBER];
       let count = 0;
       for (const key of Object.keys(newGroup)) {
         const value = newGroup[key];
-        const label = await EntityService.getPartialEntity(key, [RDFS.LABEL]);
+        const label = { [RDFS.LABEL]: labels.get(key) };
         if (count === 0) {
           result += "\t\t{ ";
         } else result += "\n\t\t  ";
         count++;
-        result += key.split("#")[1] + " |" + label[RDFS.LABEL] + "| = " + value[0].iri.split("#")[1] + " |" + value[0].name + "|";
+        if (isArrayOf(value, isTTIriRef) && isString(label[RDFS.LABEL]) && isString(value[0].name)) {
+          result += key.split("#")[1] + " |" + label[RDFS.LABEL] + "| = " + value[0].iri.split("#")[1] + " |" + value[0].name + "|";
+        }
         if (count < Object.entries(newGroup).length) result += ",";
       }
       count = 0;

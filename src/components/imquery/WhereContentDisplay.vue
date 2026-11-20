@@ -6,7 +6,7 @@
   <span v-if="where.description" class="field">{{ where.description }}</span>
   <span v-if="where.valueLabel && where.is">
     <span class="field">{{ getIsOperator(where.is, eclQuery) }}</span>
-    <span @click="isExpanded = !isExpanded" class="hover-label flex-auto justify-start p-0"> {{ where.valueLabel }}</span>
+    <span class="hover-label flex-auto justify-start p-0" @click="isExpanded = !isExpanded"> {{ where.valueLabel }}</span>
   </span>
   <ValueSentenceDisplay v-if="valueSentence" :valueSentence="valueSentence" />
 
@@ -21,7 +21,7 @@
               <span v-if="item.description" v-html="item.description"></span>
               <IMViewerLink v-if="item.iri" :iri="item.iri" :label="item.name" @navigateTo="(iri: string) => emit('navigateTo', iri)" />
               <span v-if="item.parameter">"{{ item.parameter }}" passed into query as a parameter at run time</span>
-              <span v-if="item.descendantsOrSelfOf">+subtypes</span>
+              <span v-if="item.entails == Entail.descendantsOrSelfOf">+subtypes</span>
             </li>
           </ul>
         </span>
@@ -30,35 +30,34 @@
   </span>
 
   <template v-if="boolGroup">
-    <div v-for="(nestedProperty, subIndex) in boolGroup" :key="index" class="where-container">
+    <div v-for="(nestedProperty, subIndex) in boolGroup" :key="subIndex" class="where-container">
       <span>
         <WhereContentDisplay
-          :where="nestedProperty"
+          :bracketed="subIndex === boolGroup!.length - 1"
+          :depth="depth + 1"
+          :eclQuery="eclQuery"
+          :expandedSet="expandedSet"
           :index="subIndex"
           :parentOperator="operator"
-          :key="index"
-          :depth="depth + 1"
-          :expandedSet="expandedSet"
           :root="false"
-          :eclQuery="eclQuery"
-          :bracketed="subIndex === boolGroup!.length - 1"
+          :where="nestedProperty"
         />
       </span>
     </div>
   </template>
 </template>
 
-<script setup lang="ts">
+<script lang="ts" setup>
 import { computed, ref } from "vue";
 
-import { Bool, IM } from "@endeavour/vue-library/enums";
+import { IMFontAwesomeIcon } from "@endeavour/vue-library/components";
+import { Bool, Entail, IM } from "@endeavour/vue-library/enums";
 import { getColourFromType, getFAIconFromType, isArrayHasLength } from "@endeavour/vue-library/helpers";
-import type { Node, Where } from "@endeavour/vue-library/interfaces";
+import type { Node, Where } from "@endeavour/vue-library/models";
 
 import ValueSentenceDisplay from "@/components/imquery/ValueSentenceDisplay.vue";
 import IMViewerLink from "@/components/shared/IMViewerLink.vue";
-import { buildValueSentence, getIsOperator } from "@/helpers/QueryEditorMethods";
-import { getRelativeTo } from "@/helpers/QueryEditorMethods";
+import { buildValueSentence, getIsOperator, getRelativeTo } from "@/helpers/QueryEditorMethods";
 import { getBoolGroup, getBooleanOperator, getDisplayOperator } from "@/helpers/buildQuery";
 
 interface Props {
@@ -95,7 +94,7 @@ const relativeTo = computed(() => {
   return getRelativeTo(props.where);
 });
 const whereName = computed(() => {
-  return props.where.name ? (props.where.name === "concept" ? "" : props.where.name) : "";
+  return props.where.name ? props.where.name : "";
 });
 
 function getOperator(operator: Bool | undefined, index: number): string {
@@ -117,13 +116,13 @@ function getOperator(operator: Bool | undefined, index: number): string {
   }
 }
 function getTypeIcon(is: Node) {
-  if (is.memberOf) {
+  if (is.entails == Entail.memberOf) {
     return getFAIconFromType([{ iri: IM.CONCEPT_SET }]);
   } else return getFAIconFromType([{ iri: IM.CONCEPT }]);
 }
 
 function getIconColor(is: Node) {
-  if (is.memberOf) {
+  if (is.entails == Entail.memberOf) {
     return getColourFromType([{ iri: IM.CONCEPT_SET }]);
   } else return getColourFromType([{ iri: IM.CONCEPT }]);
 }

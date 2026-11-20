@@ -3,7 +3,6 @@
 This specification describes the concept viewer functionality in IMDirectory
 
 * Open IMDirectory
-* Login
 * Search for "atshma discorder"
 * Select "Asthma (disorder)" result
 
@@ -82,8 +81,7 @@ This specification describes the concept viewer functionality in IMDirectory
 
 ## Climb hierarchy
 * Click tab "Hierarchy Position"
-* Click parent button
-* Parent hierarchy changed
+* Click parent button and hierarchy updates
 
 ## Hierarchy routes on click
 * Click tab "Hierarchy Position"

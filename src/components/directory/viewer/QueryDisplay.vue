@@ -2,7 +2,7 @@
   <div id="query-display" class="flex flex-1 flex-col">
     <div v-if="loading" class="flex flex-row"><ProgressSpinner /></div>
 
-    <div v-else-if="!isObjectHasKeys(query)">No expression or query definition found.</div>
+    <div v-else-if="!hasQuery">No expression or query definition found.</div>
     <div v-else class="query-display-container flex flex-col gap-4">
       <template v-if="!eclQuery">
         <SelectButton v-model="selectedDisplayOption" :options="displayOptions" />
@@ -21,6 +21,24 @@
             <span class="field" v-html="query.typeOf.name"></span>
             <span class="include-title text-black-500">with the following features</span>
           </div>
+
+          <template v-if="query.is && !eclQuery">
+            <Button v-if="!eclQuery" :icon="!cohort ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'" text @click="expandCohort" />
+            <span v-if="query.is.entails === Entail.descendantsOrSelfOf" class="field">subtypes of </span>
+            <template v-if="cohort">
+              <RecursiveMatchDisplay :baseType="baseType" :clause-index="0" :depth="1" :eclQuery="eclQuery" :match="cohort" :parent-match="query" />
+            </template>
+            <template v-else>
+              <span class="field">in</span>
+              <IMViewerLink
+                v-if="query.is.iri"
+                :action="'view'"
+                :iri="query.is.iri"
+                :label="query.is.name"
+                @navigateTo="(iri: string) => emit('navigateTo', iri)"
+              />
+            </template>
+          </template>
           <template v-if="boolGroup">
             <div :style="{ marginLeft: `0rem` }">
               <div
@@ -29,13 +47,13 @@
                 :class="operator === Bool.rule && index > 0 ? 'rule-box' : ''"
               >
                 <RecursiveMatchDisplay
-                  :match="nestedQuery"
-                  :clause-index="index"
-                  :parent-operator="operator"
-                  :depth="1"
-                  :parent-match="query"
-                  :eclQuery="eclQuery"
                   :baseType="baseType"
+                  :clause-index="index"
+                  :depth="1"
+                  :eclQuery="eclQuery"
+                  :match="nestedQuery as Query"
+                  :parent-match="query"
+                  :parent-operator="operator"
                 />
               </div>
             </div>
@@ -43,13 +61,13 @@
           <template v-else>
             <div>
               <RecursiveMatchDisplay
-                :match="query"
+                :baseType="baseType"
                 :clauseIndex="0"
                 :depth="0"
-                :parent-match="rootQuery"
                 :eclQuery="eclQuery"
                 :expanded="query.name === undefined"
-                :baseType="baseType"
+                :match="query"
+                :parent-match="rootQuery"
               />
             </div>
           </template>
@@ -58,42 +76,47 @@
       <div v-else-if="[DisplayOptions.MySQL, DisplayOptions.PostreSQL].includes(selectedDisplayOption)" class="query-display-content flex flex-col gap-4">
         <SQLDisplay :sql="sql" />
       </div>
-      <div v-if="query && query.columnGroup">
+      <div v-else-if="[DisplayOptions.Comparison].includes(selectedDisplayOption)" class="query-display-content flex flex-col gap-4">
+        <SplitViewer :queryJson="queryJson" :querySql="sql" />
+      </div>
+      <div v-if="query && query.columnGroup && query.columnGroup.length > 0 && ![DisplayOptions.Comparison].includes(selectedDisplayOption)">
         <span>Output columns </span>
-        <Button text :icon="!showColumns ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'" @click="showColumns = !showColumns"></Button>
+        <Button :icon="!showColumns ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'" text @click="showColumns = !showColumns"></Button>
         <div v-if="showColumns && query" class="query-display-content flex flex-col gap-4">
           <ColumnGroupDisplay
-            v-for="(nestedQuery, index) in query?.columnGroup"
-            :match="nestedQuery"
+            v-for="index in query.columnGroup.keys()"
             :key="`nestedQuery-${index}`"
-            :matchExpanded="false"
-            :returnExpanded="true"
-            :index="index"
-            :parentQuery="query"
+            v-model:datasetEntry="query.columnGroup[index]"
             :baseType="baseType"
+            :index="index"
+            :matchExpanded="true"
+            :parentQuery="query"
+            :returnExpanded="true"
           />
         </div>
       </div>
       <div v-if="query && query.return">
         <span>Returns:</span>
-        <ReturnColumns :select="query.return" class="pl-8" :parentQuery="query!" />
+        <ReturnColumns :parentQuery="query!" :select="query.return" class="pl-8" />
       </div>
     </div>
   </div>
 </template>
 
-<script setup lang="ts">
+<script lang="ts" setup>
 import { Ref, computed, onMounted, provide, ref, watch } from "vue";
 
-import { Bool, DisplayMode } from "@endeavour/vue-library/enums";
+import { Bool, DisplayMode, Entail } from "@endeavour/vue-library/enums";
 import { isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import type { Argument, Node, Query, QueryRequest } from "@endeavour/vue-library/interfaces";
+import { type Argument, type Node, type Query, type QueryRequest } from "@endeavour/vue-library/models";
 
 import { cloneDeep } from "lodash-es";
 
+import SplitViewer from "@/components/directory/viewer/SplitViewer.vue";
 import ColumnGroupDisplay from "@/components/query/viewer/ColumnGroupDisplay.vue";
 import RecursiveMatchDisplay from "@/components/query/viewer/RecursiveMatchDisplay.vue";
 import ReturnColumns from "@/components/query/viewer/ReturnColumns.vue";
+import IMViewerLink from "@/components/shared/IMViewerLink.vue";
 import { getBoolGroup, getBooleanOperator } from "@/helpers/buildQuery";
 import { QueryService } from "@/services";
 
@@ -104,7 +127,8 @@ enum DisplayOptions {
   LogicalView = "Logical view",
   Original = "Original view",
   MySQL = "MySQL",
-  PostreSQL = "PostgreSQL"
+  PostreSQL = "PostgreSQL",
+  Comparison = "Comparison"
 }
 
 interface Props {
@@ -113,18 +137,23 @@ interface Props {
   queryDefinition?: Query;
   entityType?: string;
   eclQuery?: boolean;
+  viewerDisplayMode?: DisplayMode;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
   navigateTo: [payload: string];
+
+  updateViewerDisplayMode: [payload: DisplayMode];
 }>();
+const cohort: Ref<Query | undefined> = ref();
 
 const showColumns = ref(false);
 
 const query: Ref<Query | undefined> = ref<Query | undefined>(props.queryDefinition);
-const rootQuery = ref({} as Query);
+const rootQuery = ref({});
 const sql: Ref<string> = ref("");
+const queryJson: Ref<string> = ref("");
 const loading = ref(true);
 const displayMode: Ref<DisplayMode> = ref(DisplayMode.ORIGINAL);
 const displayOptions: Ref<string[]> = ref([]);
@@ -136,6 +165,7 @@ const originalDisplay: Ref<DisplayMode> = ref(DisplayMode.ORIGINAL);
 const operator = computed(() => {
   return getBooleanOperator("Match", query.value);
 });
+const hasQuery = computed(() => isObjectHasKeys(query.value));
 const boolGroup = computed(() => {
   return getBoolGroup("Match", query.value);
 });
@@ -162,21 +192,23 @@ watch(
     await init();
   }
 );
-
 watch(selectedDisplayOption, async (newValue, oldValue) => {
   if (!newValue) selectedDisplayOption.value = oldValue;
   switch (selectedDisplayOption.value) {
     case DisplayOptions.RuleView:
       if (displayMode.value != DisplayMode.RULES) query.value = await getQueryDisplay(DisplayMode.RULES);
       displayMode.value = DisplayMode.RULES;
+      emit("updateViewerDisplayMode", DisplayMode.RULES);
       break;
     case DisplayOptions.LogicalView:
       if (displayMode.value != DisplayMode.LOGICAL) query.value = await getQueryDisplay(DisplayMode.LOGICAL);
       displayMode.value = DisplayMode.LOGICAL;
+      emit("updateViewerDisplayMode", DisplayMode.LOGICAL);
       break;
     case DisplayOptions.Original:
       if (displayMode.value != DisplayMode.ORIGINAL) query.value = await getQueryDisplay(DisplayMode.ORIGINAL);
       displayMode.value = DisplayMode.ORIGINAL;
+      emit("updateViewerDisplayMode", DisplayMode.ORIGINAL);
       break;
     case DisplayOptions.MySQL:
       if (props.entityIri) sql.value = await QueryService.generateQuerySQL(props.entityIri, "MYSQL");
@@ -184,10 +216,30 @@ watch(selectedDisplayOption, async (newValue, oldValue) => {
     case DisplayOptions.PostreSQL:
       if (props.entityIri) sql.value = await QueryService.generateQuerySQL(props.entityIri, "POSTGRESQL");
       break;
+    case DisplayOptions.Comparison:
+      if (props.entityIri) {
+        const fullQuery = await QueryService.getQueryFromIri(props.entityIri);
+        const request: QueryRequest = { query: fullQuery };
+        const queryRequest = await QueryService.getQueryRequestForSQL(request);
+        queryJson.value = JSON.stringify(queryRequest.query, null, 2);
+      }
+      if (props.entityIri) sql.value = await QueryService.generateQuerySQL(props.entityIri, "MYSQL");
+      break;
     default:
       break;
   }
 });
+async function expandCohort() {
+  if (cohort.value) {
+    cohort.value = undefined;
+  } else {
+    if (query.value && query.value.is) {
+      if (query.value.is.iri && query.value.is.cohort) {
+        cohort.value = await QueryService.expandCohort(query.value.is.iri!, DisplayMode.ORIGINAL);
+      }
+    }
+  }
+}
 
 onMounted(async () => {
   await init();
@@ -201,7 +253,8 @@ async function init() {
   if (query.value && query.value.rule) {
     originalDisplay.value = DisplayMode.RULES;
   } else originalDisplay.value = DisplayMode.ORIGINAL;
-  baseType.value = query!.value!.typeOf!;
+  if (query.value?.typeOf) baseType.value = query.value.typeOf;
+  else baseType.value = {};
   deepQuery.value = cloneDeep(query.value);
   displayMode.value = query.value?.rule ? DisplayMode.RULES : DisplayMode.LOGICAL;
   setDisplayOptions();
@@ -215,9 +268,16 @@ async function init() {
 
 function setDisplayOptions() {
   if (originalDisplay.value == DisplayMode.RULES) {
-    displayOptions.value = [DisplayOptions.RuleView, DisplayOptions.LogicalView, DisplayOptions.MySQL, DisplayOptions.PostreSQL];
+    displayOptions.value = [DisplayOptions.RuleView, DisplayOptions.LogicalView, DisplayOptions.MySQL, DisplayOptions.PostreSQL, DisplayOptions.Comparison];
   } else {
-    displayOptions.value = [DisplayOptions.Original, DisplayOptions.RuleView, DisplayOptions.LogicalView, DisplayOptions.MySQL, DisplayOptions.PostreSQL];
+    displayOptions.value = [
+      DisplayOptions.Original,
+      DisplayOptions.RuleView,
+      DisplayOptions.LogicalView,
+      DisplayOptions.MySQL,
+      DisplayOptions.PostreSQL,
+      DisplayOptions.Comparison
+    ];
   }
 }
 
@@ -243,12 +303,6 @@ async function getQueryRequestFromQueryIri() {
   border-top: 1px solid #ccc;
   border-bottom: 1px solid #ccc;
 }
-.confirm-container {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  width: 80%;
-}
 .query-display-container {
   width: 100%;
   height: 100%;
@@ -263,24 +317,11 @@ async function getQueryRequestFromQueryIri() {
   flex: 1 1 auto;
 }
 
-.query-display-view {
-  overflow: auto;
-}
-
 .field {
   padding-right: 1rem;
 }
 
 .rec-query-display {
   padding: 1rem;
-}
-
-.button-bar {
-  flex: 0 1 auto;
-  padding: 1rem 1rem 1rem 0;
-  gap: 0.5rem;
-  display: flex;
-  flex-flow: row;
-  justify-content: flex-end;
 }
 </style>

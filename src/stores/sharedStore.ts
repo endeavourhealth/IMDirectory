@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { IM, TagSeverity } from "@endeavour/vue-library/enums";
 import { localStorageWithExpiry } from "@endeavour/vue-library/helpers";
 
+import { isBoolean } from "lodash-es";
 import { defineStore } from "pinia";
 
 export const useSharedStore = defineStore("shared", () => {
@@ -16,12 +17,11 @@ export const useSharedStore = defineStore("shared", () => {
   ]);
   const showReleaseNotes = ref<boolean>(false);
   const showReleaseBanner = ref<boolean>(localStorage.getItem("showReleaseBanner") === "true" ? true : false);
-  const showDevBanner = ref<boolean>(localStorageWithExpiry.getItem("showDevBanner") ?? true);
+  const showDevBanner = ref<boolean>(localStorageWithExpiry.getItem("showDevBanner", isBoolean) ?? true);
   const activeProfile = ref<{ uuid: string; activeClausePath: string }>({ uuid: "", activeClausePath: "" });
   const error = ref<string>("");
   const isPublicMode = ref<boolean | undefined>();
   const isDevMode = ref<boolean>(true);
-  const signinUrl = ref<string>("");
   const signupUrl = ref<string>("");
 
   function updateShowCookieConsent(bool: boolean) {
@@ -70,10 +70,6 @@ export const useSharedStore = defineStore("shared", () => {
     isDevMode.value = devMode;
   }
 
-  function updateSigninUrl(url: string) {
-    signinUrl.value = url;
-  }
-
   function updateSignupUrl(url: string) {
     signupUrl.value = url;
   }
@@ -88,7 +84,6 @@ export const useSharedStore = defineStore("shared", () => {
     showReleaseNotes,
     showSnomedLicense,
     showUprnConsent,
-    signinUrl,
     signupUrl,
     tagSeverityMatches,
     updateActiveProfile,
@@ -101,7 +96,6 @@ export const useSharedStore = defineStore("shared", () => {
     updateShowReleaseNotes,
     updateShowSnomedLicense,
     updateShowUprnConsent,
-    updateSigninUrl,
     updateSignupUrl,
     updateTagSeverityMatches
   };

@@ -41,17 +41,18 @@
 <script setup lang="ts">
 import { Ref, computed, onMounted, ref, watch } from "vue";
 
+import { AlertDialog } from "@endeavour/vue-library/components";
 import { NAMESPACE } from "@endeavour/vue-library/enums";
-import type { Namespace, NamespaceRequest, Task } from "@endeavour/vue-library/interfaces";
+import { type Task } from "@endeavour/vue-library/models";
 import { useUserStore } from "@endeavour/vue-library/stores";
+import { useDialogStore } from "@endeavour/vue-library/stores";
 
 import { useConfirm } from "primevue/useconfirm";
 
+import { type Namespace, type NamespaceRequest, NamespaceRequestSchema } from "@/models";
 import ConfigService from "@/services/ConfigService";
 import WorkflowService from "@/services/WorkflowService";
-import { useDialogStore } from "@/stores/dialogStore";
 
-import AlertDialog from "../shared/dynamicDialogs/AlertDialog.vue";
 import TaskViewer from "./TaskViewer.vue";
 
 interface Props {
@@ -121,7 +122,7 @@ async function updateTask(task: Task) {
         label: "Update"
       },
       accept: async () => {
-        const updatedNamespaceRequest: NamespaceRequest = {
+        const updatedNamespaceRequest = NamespaceRequestSchema.parse({
           id: { iri: props.id },
           namespacePermission: { iri: selectedNamespace.value, read: allowRead.value, write: allowWrite.value },
           createdBy: task.createdBy,
@@ -129,8 +130,9 @@ async function updateTask(task: Task) {
           state: task.state,
           assignedTo: task.assignedTo,
           dateCreated: task.dateCreated,
-          history: task.history
-        };
+          history: task.history,
+          hostUrl: window.location.origin
+        });
         await WorkflowService.updateNamespaceRequest(updatedNamespaceRequest).then(async () => {
           await dialogStore.open(AlertDialog, {
             props: { modal: true, style: { width: "30vw" }, closable: false },

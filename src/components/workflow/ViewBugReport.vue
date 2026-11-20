@@ -126,16 +126,16 @@
 <script setup lang="ts">
 import { Ref, computed, onMounted, ref, watch } from "vue";
 
+import { AlertDialog } from "@endeavour/vue-library/components";
 import { Browser, OperatingSystem, TaskModule } from "@endeavour/vue-library/enums";
-import type { BugReport, Task } from "@endeavour/vue-library/interfaces";
+import { type BugReport, BugReportSchema, type Task } from "@endeavour/vue-library/models";
 import { useUserStore } from "@endeavour/vue-library/stores";
+import { useDialogStore } from "@endeavour/vue-library/stores";
 
 import { useConfirm } from "primevue/useconfirm";
 
 import WorkflowService from "@/services/WorkflowService";
-import { useDialogStore } from "@/stores/dialogStore";
 
-import AlertDialog from "../shared/dynamicDialogs/AlertDialog.vue";
 import TaskViewer from "./TaskViewer.vue";
 
 interface Props {
@@ -278,7 +278,7 @@ function updateTask(task: Task) {
         label: "Update"
       },
       accept: async () => {
-        const updatedBugReport: BugReport = {
+        const updatedBugReport = BugReportSchema.parse({
           id: { iri: props.id },
           product: selectedProduct.value,
           module: selectedModule.value,
@@ -296,7 +296,7 @@ function updateTask(task: Task) {
           assignedTo: task.assignedTo,
           dateCreated: task.dateCreated,
           history: task.history
-        };
+        });
         await WorkflowService.updateBugReport(updatedBugReport).then(async () => {
           await dialogStore.open(AlertDialog, {
             props: { modal: true, style: { width: "30vw" } },

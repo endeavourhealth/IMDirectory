@@ -3,29 +3,11 @@
     <div>
       <ValueSentenceDisplay v-if="valueSentence" :value-sentence="valueSentence" />
     </div>
-    <div v-if="uiProperty.valueType === XSD.STRING" class="property-input-container">
-      <Select
-        :options="[
-          { id: '=', name: 'is' },
-          { id: 'startsWith', name: 'starts with' },
-          { id: 'contains', name: 'contains' },
-          { id: 'notNull', name: 'is recorded' },
-          { id: 'isNull', name: 'is not recorded' }
-        ]"
-        optionValue="id"
-        optionLabel="name"
-        v-model:model-value="where.operator"
-      />
-      <InputText type="text" v-model:model-value="where.value" data-testid="property-value-input" />
-    </div>
-    <div v-else-if="uiProperty.valueType === XSD.BOOLEAN" class="property-input-container">
-      <Select :options="booleanOptions" option-label="name" option-value="value" v-model:model-value="where.value" />
-    </div>
-    <div v-else class="where-relative-container">
+    <div v-if="uiProperty.valueType != XSD.STRING" class="where-relative-container">
       <div class="relative-buttons">
         <span class="field">
           <span v-for="opt in RangeValueOptions" :key="opt.value" class="gap-1">
-            <RadioButton v-model="rangeOrValue" :value="opt.value" :inputId="opt.value" @update:modelValue="updateRangeOrValue" />
+            <RadioButton v-model="rangeOrValue" :inputId="opt.value" :value="opt.value" @update:modelValue="updateRangeOrValue" />
             <label :for="opt.value" class="field">{{ opt.label }}</label>
           </span>
         </span>
@@ -33,34 +15,40 @@
     </div>
     <div v-if="rangeOrValue === RangeOrValue.SingleValue" class="value-editor">
       <ValueEditor
-        :ui-property="uiProperty"
         v-model:assignable="where"
+        v-model:match="match"
         v-model:where="where"
+        :baseType="baseType"
         :qualifier="where.qualifier"
         :refresh="refresh"
-        @updateAssignable="updateWhereDisplay(where)"
+        :ui-property="uiProperty"
+        @updateAssignable="updateWhereDisplay"
       />
     </div>
     <div v-else-if="rangeOrValue === RangeOrValue.Range && where.range && where.range.from && where.range.to" class="value-editor">
       <span class="range-label">between</span>
       <ValueEditor
-        :ui-property="uiProperty"
         v-model:assignable="where.range.from"
+        v-model:match="match"
         v-model:where="where"
+        :baseType="baseType"
+        :fromOrTo="'from'"
         :qualifier="where.qualifier"
         :refresh="refresh"
-        :fromOrTo="'from'"
-        @updateAssignable="updateWhereDisplay(where.range.from)"
+        :ui-property="uiProperty"
+        @updateAssignable="updateWhereDisplay"
       />
       <span class="range-label">and</span>
       <ValueEditor
-        :ui-property="uiProperty"
         v-model:assignable="where.range.to"
+        v-model:match="match"
         v-model:where="where"
+        :baseType="baseType"
+        :fromOrTo="'to'"
         :qualifier="where.qualifier"
         :refresh="refresh"
-        :fromOrTo="'to'"
-        @updateAssignable="updateWhereDisplay(where.range.to)"
+        :ui-property="uiProperty"
+        @updateAssignable="updateWhereDisplay"
       />
     </div>
     <div v-if="uiProperty.qualifierOptions">
@@ -68,13 +56,13 @@
       <Select
         v-model="qualifierIri"
         :options="qualifierOptions"
+        :placeholder="'no function on ' + where.name"
         optionLabel="displayName"
         optionValue="iri"
-        :placeholder="'no function on ' + where.name"
         @update:modelValue="updateQualifier"
       >
         <template #option="slotProps">
-          <div class="flex items-center" v-tooltip="slotProps.option.tooltip" style="min-height: 1rem">
+          <div v-tooltip="slotProps.option.tooltip" class="flex items-center" style="min-height: 1rem">
             <div>{{ slotProps.option.displayName }}</div>
           </div>
         </template>
@@ -83,34 +71,34 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script lang="ts" setup>
 import { Ref, computed, onMounted, ref, watch } from "vue";
 
-import { IM, XSD } from "@endeavour/vue-library/enums";
-import { Operator } from "@endeavour/vue-library/enums";
-import type { Assignable, Match, UIProperty, Where } from "@endeavour/vue-library/interfaces";
-
-import { cloneDeep } from "lodash-es";
+import { Operator, XSD } from "@endeavour/vue-library/enums";
+import { type Node, type Query, type Range, type Where } from "@endeavour/vue-library/models";
 
 import ValueEditor from "@/components/imquery/ValueEditor.vue";
 import ValueSentenceDisplay from "@/components/imquery/ValueSentenceDisplay.vue";
 import { RangeValueOptions } from "@/constants";
 import { RangeOrValue } from "@/enums";
 import { buildValueSentence } from "@/helpers/QueryEditorMethods";
+import { type UIProperty } from "@/models";
 
 interface Props {
   uiProperty: UIProperty;
+  baseType: Node;
 }
 
 const refresh = defineModel<number>("refresh", { default: 0 });
 const props = defineProps<Props>();
-const where = defineModel<Where>("where", { default: {} });
+const match = defineModel<Query>("match", { default: () => ({}) as Query });
+const where = defineModel<Where>("where", { default: () => ({}) as Where });
 const booleanOptions = [
   { name: "true", value: true },
   { name: "false", value: false }
 ];
 const emit = defineEmits(["updateProperty"]);
-const whereDisplay: Ref<string> = ref("");
+
 const rangeOrValue: Ref<RangeOrValue> = ref(where.value.range ? RangeOrValue.Range : RangeOrValue.SingleValue);
 
 const qualifierOptions = computed(() => {
@@ -157,7 +145,7 @@ function init() {
 function updateRangeOrValue() {
   if (rangeOrValue.value === RangeOrValue.Range) {
     if (!where.value.range) {
-      where.value.range = { from: { operator: Operator.gte }, to: { operator: Operator.lte } };
+      where.value.range = { from: { operator: Operator.gte }, to: { operator: Operator.lte } } as Range;
       where.value.range.from.operator = where.value.operator;
       where.value.range.from.value = where.value.value;
       where.value.range.to.operator = (() => {
@@ -175,30 +163,17 @@ function updateRangeOrValue() {
         }
       })();
       if (where.value.compare) {
-        where.value.range.from.compare = where.value.compare;
-        where.value.range.to.compare = { left: {}, right: {} };
-        where.value.range.to.compare.right = cloneDeep(where.value.range.from.compare.right);
-        where.value.range.to.compare.units = where.value.range.from.compare.units;
-        if (where.value.range.to.compare.units && !where.value.range.to.value) {
+        if (where.value.range.to.units && !where.value.range.to.value) {
           where.value.range.to.value = "0";
           where.value.range.to.operator = Operator.eq;
         }
-        delete where.value.compare;
       }
       delete where.value.value;
       delete where.value.operator;
     }
-  } else {
-    if (where.value.range) {
-      if (where.value.range.from.compare) {
-        where.value.compare = where.value.range.from.compare;
-        where.value.operator = where.value.range.from.operator;
-        where.value.value = where.value.range.from.value;
-      } else {
-        where.value.value = where.value.range.from.value;
-        where.value.operator = where.value.range.from.operator;
-      }
-    }
+  } else if (where.value.range) {
+    where.value.value = where.value.range.from.value;
+    where.value.operator = where.value.range.from.operator;
     delete where.value.range;
   }
   emit("updateProperty");
@@ -215,7 +190,7 @@ function updateQualifier() {
 function selectedQualifierTemplate(option: any) {
   return `${option.name} of ${where.value.name}`;
 }
-function updateWhereDisplay(assignable: Assignable) {
+function updateWhereDisplay() {
   emit("updateProperty");
 }
 </script>
@@ -245,30 +220,11 @@ function updateWhereDisplay(assignable: Assignable) {
   display: flex;
   flex-direction: row;
 }
-.property-input-container {
-  display: flex;
-  flex-flow: row;
-  align-items: baseline;
-}
-
-.property-input {
-  display: flex;
-  flex-flow: row;
-  align-items: baseline;
-  flex-wrap: wrap;
-  margin-top: 1rem;
-}
 .field {
   padding-left: 1rem;
   padding-right: 1rem;
 }
 
-.property-range {
-  display: flex;
-  flex-flow: row;
-  align-items: baseline;
-  margin-top: 1rem;
-}
 .range-label {
   padding-left: 0.5rem;
   padding-right: 0.5rem;

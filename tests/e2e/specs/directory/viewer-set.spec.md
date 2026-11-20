@@ -3,7 +3,6 @@
 This specification describes the set (value set) viewer functionality in IMDirectory
 
 * Open IMDirectory
-* Login
 * Open filters
 * Select concept type "Data model bound value set"
 * Close filters

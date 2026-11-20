@@ -5,10 +5,11 @@
 <script setup lang="ts">
 import { Ref, onMounted, ref } from "vue";
 
-import type { Entailment } from "@endeavour/vue-library/interfaces";
+import { Entail } from "@endeavour/vue-library/enums";
+import type { Element } from "@endeavour/vue-library/models";
 
 const props = defineProps<{
-  entailmentObject: Entailment;
+  entailmentObject: Element;
 }>();
 
 const emit = defineEmits<{
@@ -29,10 +30,20 @@ onMounted(() => {
 });
 
 function init() {
-  if (props.entailmentObject?.ancestorsOf) selectedOption.value = "ancestorsOf";
-  else if (props.entailmentObject?.descendantsOrSelfOf) selectedOption.value = "descendantsOrSelfOf";
-  else if (props.entailmentObject?.descendantsOf) selectedOption.value = "descendantsOf";
-  else selectedOption.value = "memberOf";
+  const entail = props.entailmentObject.entails;
+  switch (entail) {
+    case Entail.ancestorsOf:
+      selectedOption.value = "ancestorsOf";
+      break;
+    case Entail.descendantsOrSelfOf:
+      selectedOption.value = "descendantsOrSelfOf";
+      break;
+    case Entail.descendantsOf:
+      selectedOption.value = "descendantsOf";
+      break;
+    default:
+      selectedOption.value = "memberOf";
+  }
 }
 
 function onChange() {

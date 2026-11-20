@@ -7,38 +7,39 @@
       </div>
       <div class="content-container">
         <Select
-          :disabled="disableSchemeEdit"
-          class="dropdown"
           v-model="selectedDropdownOption"
+          :disabled="disableSchemeEdit"
           :options="dropdownOptions"
-          optionLabel="name"
+          class="dropdown"
           data-testid="iri-builder-dropdown"
+          optionLabel="name"
         />
         <span v-if="includePrefix" class="prefix">{{ prefix }}</span>
         <InputText
+          v-model="userInput"
+          :class="invalid && showValidation && 'invalid'"
           :disabled="disableCodeEdit"
           class="p-inputtext-lg input-text"
-          :class="invalid && showValidation && 'invalid'"
-          v-model="userInput"
-          type="text"
           data-testid="iri-builder-input"
+          type="text"
+          @blur="handleBlur"
         />
-        <ProgressSpinner v-if="loading" class="loading-icon" style="height: 2rem; width: 2rem" strokeWidth="8" />
+        <ProgressSpinner v-if="loading" class="loading-icon" strokeWidth="8" style="height: 2rem; width: 2rem" />
       </div>
-      <span>{{ selectedDropdownOption ? selectedDropdownOption.iri : "" }}{{ prefix ? prefix : "" }}{{ userInput }}</span>
+      <span>{{ selectedDropdownOption ? selectedDropdownOption.iri : "" }}{{ prefix ? prefix : "" }}{{ userInput ? userInput : value }}</span>
       <small v-if="invalid && showValidation" class="validate-error">{{ validationErrorMessage }}</small>
     </div>
   </div>
 </template>
 
-<script setup lang="ts">
+<script lang="ts" setup>
 import { ComputedRef, Ref, computed, inject, onMounted, ref, watch } from "vue";
 
-import { IM, NAMESPACE, RDFS } from "@endeavour/vue-library/enums";
-import { TypeGuards, byName, isArrayHasLength, isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import type { ExtendedTTEntity, PropertyShape, Query, QueryRequest, TTIriRef } from "@endeavour/vue-library/interfaces";
+import { NAMESPACE, RDFS } from "@endeavour/vue-library/enums";
+import { byName, isArrayHasLength, isObjectHasKeys } from "@endeavour/vue-library/helpers";
+import { type PropertyShape, type Query, type QueryRequest, type TTEntity, type TTIriRef, isTTIriRef } from "@endeavour/vue-library/models";
 
-import { cloneDeep, isEqual } from "lodash-es";
+import { cloneDeep, isArray, isEqual } from "lodash-es";
 
 import { EditorMode } from "@/enums";
 import { processArguments } from "@/helpers/EditorMethods";
@@ -100,18 +101,15 @@ const disableCodeEdit: ComputedRef<boolean> = computed(() => {
 });
 
 const disableSchemeEdit: ComputedRef<boolean> = computed(() => {
-  if (loading.value || props.mode === "edit") return true;
-  else return false;
+  return !!(loading.value || props.mode === "edit");
 });
 
 const showRequired: ComputedRef<boolean> = computed(() => {
-  if (props.shape.minCount && props.shape.minCount > 0) return true;
-  else return false;
+  return !!(props.shape.minCount && props.shape.minCount > 0);
 });
 
 const includePrefix: ComputedRef<boolean> = computed(() => {
-  if (props.mode === EditorMode.CREATE && prefix.value) return true;
-  else return false;
+  return !!(props.mode === EditorMode.CREATE && prefix.value);
 });
 
 const dropdownOptions: Ref<TTIriRef[]> = ref([]);
@@ -124,11 +122,7 @@ const showValidation = ref(false);
 const prefix = ref("");
 
 watch([selectedDropdownOption, userInput], async ([newSelectedDropdownOption, newUserInput], [oldSelectedDropdownOption, oldUserInput]) => {
-  if (
-    TypeGuards.isTTIriRef(newSelectedDropdownOption) &&
-    newUserInput &&
-    (newSelectedDropdownOption !== oldSelectedDropdownOption || newUserInput !== oldUserInput)
-  ) {
+  if (isTTIriRef(newSelectedDropdownOption) && newUserInput && (newSelectedDropdownOption !== oldSelectedDropdownOption || newUserInput !== oldUserInput)) {
     let concatenated = "";
     concatenated += newSelectedDropdownOption.iri;
     if (includePrefix.value) concatenated += prefix.value;
@@ -138,12 +132,10 @@ watch([selectedDropdownOption, userInput], async ([newSelectedDropdownOption, ne
     if (updateValidity) {
       if (props.shape.builderChild) {
         hasData();
-      } else if (userInput.value) {
-        await updateValidity(props.shape, editorEntity, valueVariableMap, key, invalid, validationErrorMessage);
       }
       showValidation.value = true;
     }
-  } else if (!newUserInput && newUserInput !== oldUserInput && TypeGuards.isTTIriRef(newSelectedDropdownOption)) {
+  } else if (!newUserInput && newUserInput !== oldUserInput && isTTIriRef(newSelectedDropdownOption)) {
     let concatenated = "";
     concatenated += newSelectedDropdownOption.iri;
     if (includePrefix.value) concatenated += prefix.value;
@@ -157,7 +149,7 @@ watch([selectedDropdownOption, userInput], async ([newSelectedDropdownOption, ne
       }
       showValidation.value = true;
     }
-  } else if (!TypeGuards.isTTIriRef(newSelectedDropdownOption) && isEqual(newSelectedDropdownOption, oldSelectedDropdownOption) && newUserInput) {
+  } else if (!isTTIriRef(newSelectedDropdownOption) && isEqual(newSelectedDropdownOption, oldSelectedDropdownOption) && newUserInput) {
     let concatenated = "";
     if (includePrefix.value) concatenated += prefix.value;
     concatenated += newUserInput;
@@ -166,8 +158,6 @@ watch([selectedDropdownOption, userInput], async ([newSelectedDropdownOption, ne
     if (updateValidity) {
       if (props.shape.builderChild) {
         hasData();
-      } else {
-        await updateValidity(props.shape, editorEntity, valueVariableMap, key, invalid, validationErrorMessage);
       }
       showValidation.value = true;
     }
@@ -226,8 +216,7 @@ async function getDropdownOptions() {
     const args = processArguments(props.shape);
     const queryRequest = {} as QueryRequest;
     queryRequest.argument = args;
-    const query = { iri: props.shape.select![0].iri } as Query;
-    queryRequest.query = query;
+    queryRequest.query = { iri: props.shape.select![0].iri } as Query;
     const result = await QueryService.queryIM(queryRequest);
     if (result)
       return result.entities.map((item: any) => {
@@ -235,12 +224,14 @@ async function getDropdownOptions() {
       });
     else return [];
   } else if (isObjectHasKeys(props.shape, ["function"])) {
-    return (await FunctionService.runFunction(props.shape.function!.iri)).sort(byName);
+    const result = await FunctionService.runFunction(props.shape.function!.iri);
+    if (isArray(result)) return result.sort(byName);
+    else throw new Error("Function result must an array");
   } else throw new Error("propertyshape is missing 'select' or 'function' parameter to fetch dropdown options");
 }
 
 function updateEntity(data: string) {
-  const result = {} as ExtendedTTEntity;
+  const result = {} as TTEntity;
   result[key] = data;
   if (!data && !props.shape.builderChild && deleteEntityKey) deleteEntityKey(key);
   else if (!props.shape.builderChild && entityUpdate) entityUpdate(result);
@@ -265,6 +256,11 @@ function hasData() {
   if (!userInput.value) {
     invalid.value = true;
     validationErrorMessage.value = props.shape.validationErrorMessage ?? "Missing data. ";
+  }
+}
+async function handleBlur() {
+  if (userInput.value && props.shape && updateValidity) {
+    await updateValidity(props.shape, editorEntity, valueVariableMap, key, invalid, validationErrorMessage);
   }
 }
 </script>
@@ -324,10 +320,6 @@ function hasData() {
   color: var(--p-red-500);
   font-size: 0.8rem;
   padding: 0 0 0.25rem 0;
-}
-
-.invalid {
-  border: 1px solid var(--p-red-500);
 }
 
 .title-bar {

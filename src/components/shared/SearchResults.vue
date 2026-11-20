@@ -6,11 +6,11 @@
           <MultiSelect
             id="status"
             v-model="selectedStatus"
-            @change="filterResults"
             :options="statusOptions"
-            optionLabel="name"
-            display="chip"
             data-testid="status-filter"
+            display="chip"
+            optionLabel="name"
+            @change="filterResults"
           />
           <label for="status">Select status:</label>
         </FloatLabel>
@@ -20,11 +20,11 @@
           <MultiSelect
             id="scheme"
             v-model="selectedSchemes"
-            @change="filterResults"
             :options="schemeOptions"
-            optionLabel="name"
-            display="chip"
             data-testid="scheme-filter"
+            display="chip"
+            optionLabel="name"
+            @change="filterResults"
           />
           <label for="scheme">Select scheme:</label>
         </FloatLabel>
@@ -34,11 +34,11 @@
           <MultiSelect
             id="type"
             v-model="selectedTypes"
-            @change="filterResults"
             :options="typeOptions"
-            optionLabel="name"
-            display="chip"
             data-testid="type-filter"
+            display="chip"
+            optionLabel="name"
+            @change="filterResults"
           />
           <label for="type">Select concept type:</label>
         </FloatLabel>
@@ -48,41 +48,39 @@
       <h2 class="heading">Quick type filters</h2>
       <div class="quick-filters-container">
         <div class="radio-label-container">
-          <RadioButton v-model="quickTypeFilter" inputId="allQuickFilter" name="quickTypeFilter" :value="undefined" variant="filled" />
+          <RadioButton v-model="quickTypeFilter" :value="undefined" inputId="allQuickFilter" name="quickTypeFilter" variant="filled" />
           <label for="allQuickFilter">All</label>
         </div>
-        <div v-for="(typeOption, index) in typeOptions.filter(t => quickTypeFiltersAllowed.includes(t.iri))" class="radio-label-container" v-bind:key="index">
-          <RadioButton v-model="quickTypeFilter" :inputId="typeOption.name + 'QuickFilter'" name="quickTypeFilter" :value="typeOption" variant="filled" />
+        <div v-for="(typeOption, index) in typeOptions.filter(t => quickTypeFiltersAllowed.includes(t.iri))" v-bind:key="index" class="radio-label-container">
+          <RadioButton v-model="quickTypeFilter" :inputId="typeOption.name + 'QuickFilter'" :value="typeOption" name="quickTypeFilter" variant="filled" />
           <label :for="typeOption.name + 'QuickFilter'">{{ typeOption.name }}</label>
         </div>
       </div>
     </div>
     <ResultsTable
-      :search-term="searchTerm"
-      :updateSearch="updateSearch"
-      :selected-filter-options="selectedFilterOptions"
-      :pageSize="rows"
-      :im-query="imQuery"
       :disablePageDropdown="disablePageDropdown"
+      :im-query="imQuery"
+      :pageSize="rows"
+      :search-term="searchTerm"
+      :selected-filter-options="selectedFilterOptions"
       :show-select="showSelect"
-      @rowSelected="updateSelected"
+      :updateSearch="updateSearch"
+      @addToList="(iri: string) => emit('addToList', iri)"
       @locateInTree="(iri: string) => emit('locateInTree', iri)"
+      @rowSelected="updateSelected"
       @searchResultsUpdated="(searchResults: SearchResponse | undefined) => $emit('searchResultsUpdated', searchResults)"
       @viewHierarchy="(iri: string) => emit('viewHierarchy', iri)"
-      @addToList="(iri: string) => emit('addToList', iri)"
     />
   </div>
 </template>
 
-<script setup lang="ts">
-import { ComputedRef, Ref, computed, onMounted, ref, watch } from "vue";
-
-import { IM } from "@endeavour/vue-library/enums";
-import type { FilterOptions, QueryRequest, SearchResponse, SearchResultSummary, TTIriRef } from "@endeavour/vue-library/interfaces";
-
+<script lang="ts" setup>
 import { cloneDeep } from "lodash-es";
-
+import { ComputedRef, Ref, computed, onMounted, ref, watch } from "vue";
+import { IM } from "@endeavour/vue-library/enums";
+import type { QueryRequest, SearchResponse, SearchResultSummary, TTIriRef } from "@endeavour/vue-library/models";
 import ResultsTable from "@/components/shared/ResultsTable.vue";
+import { type FilterOptions } from "@/models";
 import { useFilterStore } from "@/stores/filterStore";
 
 interface Props {
@@ -102,7 +100,7 @@ const props = withDefaults(defineProps<Props>(), {
   showFilters: true,
   showQuickTypeFilters: false,
   quickTypeFiltersAllowed: () => [IM.CONCEPT, IM.VALUESET],
-  rows: 25
+  rows: 20
 });
 
 const emit = defineEmits<{
@@ -225,7 +223,5 @@ label {
   margin: 0;
 }
 
-.p-multiselect {
-  width: 100%;
-}
+
 </style>

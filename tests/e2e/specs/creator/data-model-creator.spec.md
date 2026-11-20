@@ -7,9 +7,8 @@ This specification describes the data model creator functionality of IMDirectory
 ### Setup
 
 * Open IMDirectory
-* Login
 * Click shortcut "Creator"
-* Click "shape" button
+* Click "Data model" button
 * Verify Creator layout is displayed
 
 ### Initial State

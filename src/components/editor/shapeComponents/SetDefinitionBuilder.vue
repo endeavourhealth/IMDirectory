@@ -1,10 +1,10 @@
 <template>
   <MembersPreview v-if="showMembersDialog" :query="eclQuery.query" @closeMemberDialog="showMembersDialog = false" />
   <div class="set-definition-container">
-    <div class="ecl-container" id="ecl-text-editor">
+    <div id="ecl-text-editor" class="ecl-container">
       <div class="text-copy-container">
         <div id="definition-panel-container">
-          <Tabs value="0" class="ecl-tabview">
+          <Tabs class="ecl-tabview" value="0">
             <TabList>
               <Tab value="0">ECL</Tab>
               <Tab value="1">Display</Tab>
@@ -13,92 +13,89 @@
               <TabPanel value="0">
                 <div class="ecl-panel">
                   <div class="ecl-container">
-                    <div class="html-preview" v-html="highlightedText" ref="highlightDiv" />
+                    <div ref="highlightDiv" class="html-preview" v-html="highlightedText" />
                     <Textarea
-                      class="transparent-textarea"
+                      id="ecl-string-container"
                       ref="textarea"
                       v-model="ecl"
-                      id="ecl-string-container"
-                      :placeholder="loading ? 'loading...' : 'Enter ECL text here...'"
-                      data-testid="ecl-string"
                       :disabled="loading"
+                      :placeholder="loading ? 'loading...' : 'Enter ECL text here...'"
+                      class="transparent-textarea"
+                      data-testid="ecl-string"
+                      @drop="dropReceived($event)"
                       @dragenter.prevent
                       @dragover.prevent
-                      @drop="dropReceived($event)"
                     />
                   </div>
                   <div v-if="eclQuery.status!.valid">
                     <label for="">Show names</label>
                     <Checkbox v-model="showNames" :binary="true" />
                   </div>
-                  <div class="error-message" v-if="!eclQuery.status!.valid">
+                  <div v-if="!eclQuery.status!.valid" class="error-message">
                     Invalid ECL : line {{ eclQuery.status!.line }}, offset {{ eclQuery.status!.offset }} -> {{ eclQuery.status!.message }}
                   </div>
                 </div>
               </TabPanel>
               <TabPanel value="1">
-                <QueryDisplay :queryDefinition="eclQuery.query" :eclQuery="true" />
+                <QueryDisplay :eclQuery="true" :queryDefinition="eclQuery.query" />
               </TabPanel>
             </TabPanels>
           </Tabs>
         </div>
       </div>
       <div class="button-container">
-        <Button label="Import" @click="toggleMenuOptions" aria-haspopup="true" aria-controls="import_menu" />
+        <Button aria-controls="import_menu" aria-haspopup="true" label="Import" @click="toggleMenuOptions" />
         <Menu id="import_menu" ref="importMenu" :model="buttonOptions" :popup="true" />
-        <Button label="Set builder" @click="showBuilder" severity="help" data-testid="builder-button" :loading="loading" />
-        <Button label="Validate model" severity="info" @click="validateModel(false)" data-testid="ecl-validate-button" />
-        <Button label="Preview expansion" severity="info" @click="previewExpansion()" data-testid="expansion-preview-button" />
+        <Button :loading="loading" data-testid="builder-button" label="Set builder" severity="help" @click="showBuilder" />
+        <Button data-testid="ecl-validate-button" label="Validate model" severity="info" @click="validateModel(false)" />
+        <Button data-testid="expansion-preview-button" label="Preview expansion" severity="info" @click="previewExpansion()" />
         <Button
+          v-clipboard:copy="copyToClipboard()"
+          v-clipboard:error="onCopyError"
+          v-clipboard:success="onCopy"
+          data-testid="copy-to-clipboard-button"
           icon="fa-solid fa-copy"
           label="Copy to clipboard"
-          v-clipboard:copy="copyToClipboard()"
-          v-clipboard:success="onCopy"
-          v-clipboard:error="onCopyError"
-          data-testid="copy-to-clipboard-button"
         />
       </div>
     </div>
 
     <ECLBuilder
       v-if="showDialog"
-      :showDialog="showDialog"
       :query="eclQuery.query"
+      :setIri="savedSetIri"
+      :showDialog="showDialog"
       :showNames="showNames"
-      @eclSubmitted="updatefromBuilder"
       @closeDialog="() => (showDialog = false)"
+      @eclSubmitted="updatefromBuilder"
     />
 
     <AddByCodeList
       :showAddByFile="showAddByFileDialog"
       :showAddByList="showAddByCodeListDialog"
-      @closeDialog="closeAddByDialog"
       @addCodeList="processCodeList"
+      @closeDialog="closeAddByDialog"
     />
   </div>
 </template>
 
-<script setup lang="ts">
-import { ComputedRef, Ref, computed, inject, nextTick, onMounted, ref, watch } from "vue";
-
+<script lang="ts" setup>
+import { Ref, computed, inject, onMounted, ref, watch } from "vue";
+import { AlertDialog } from "@endeavour/vue-library/components";
 import { useCopyToClipboard } from "@endeavour/vue-library/composables";
 import { IM } from "@endeavour/vue-library/enums";
 import { isArrayHasLength, isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import type { ECLQueryRequest, ExtendedTTEntity, PropertyShape, SearchResultSummary } from "@endeavour/vue-library/interfaces";
-
-import { cloneDeep, isEqual, last } from "lodash-es";
+import type { PropertyShape, SearchResultSummary, TTEntity } from "@endeavour/vue-library/models";
+import { useDialogStore } from "@endeavour/vue-library/stores";
 import { useDialog } from "primevue/usedialog";
-
 import QueryDisplay from "@/components/directory/viewer/QueryDisplay.vue";
 import MembersPreview from "@/components/directory/viewer/set/MembersPreview.vue";
 import ECLBuilder from "@/components/imquery/ECLBuilder.vue";
-import AlertDialog from "@/components/shared/dynamicDialogs/AlertDialog.vue";
 import { useEclValidator } from "@/composables/useEclValidator";
 import { EditorMode } from "@/enums";
 import injectionKeys from "@/injectionKeys/injectionKeys";
+import { type ECLQueryRequest } from "@/models";
 import { EclService } from "@/services";
-import { useDialogStore } from "@/stores/dialogStore";
-
 import AddByCodeList from "./setDefinition/AddByCodeList.vue";
 
 interface Props {
@@ -111,7 +108,7 @@ const props = defineProps<Props>();
 
 const dialogStore = useDialogStore();
 const validationDialog = useDialog();
-const eclQuery: Ref<ECLQueryRequest> = ref({ status: { valid: true } } as ECLQueryRequest);
+const eclQuery: Ref<ECLQueryRequest> = ref({ status: { valid: true }, query: { typeOf: { iri: IM.CONCEPT } } } as ECLQueryRequest);
 const importMenu = ref();
 const ecl: Ref<string> = ref("");
 const { copyToClipboard, onCopy, onCopyError } = useCopyToClipboard(ecl);
@@ -137,6 +134,9 @@ const highlightDiv = ref<HTMLDivElement | null>(null);
 const lastValidEcl: Ref<string> = ref("");
 const showMembersDialog = ref(false);
 const initialised = ref(false);
+
+// Only a set that has already been saved has members to compare a new definition against
+const savedSetIri = computed(() => (props.mode === EditorMode.EDIT ? (editorEntity.value[IM.ID] as string | undefined) : undefined));
 
 const key = props.shape.path.iri;
 const buttonOptions = [
@@ -243,7 +243,7 @@ function previewExpansion() {
 
 function updateEntity() {
   if (entityUpdate) {
-    const result = {} as ExtendedTTEntity;
+    const result = {} as TTEntity;
     if (eclQuery.value && eclQuery.value.query) {
       result[key] = JSON.stringify(eclQuery.value.query);
     }
@@ -258,6 +258,10 @@ async function processProps() {
     ecl.value = eclQuery.value.ecl!;
     lastValidEcl.value = ecl.value;
   } else {
+    if (editorEntity.value && editorEntity.value[IM.ID]) {
+      ecl.value = await EclService.getEclFromMembers(editorEntity.value[IM.ID] as string);
+      lastValidEcl.value = ecl.value;
+    }
     initialised.value = true;
   }
 }
@@ -369,18 +373,6 @@ Textarea {
   flex-flow: row;
   gap: 1rem;
   margin: 1rem 0 1rem 0;
-}
-
-.title-bar {
-  display: flex;
-  flex-flow: row nowrap;
-  justify-content: center;
-  gap: 0.25rem;
-  width: 100%;
-}
-
-.required {
-  color: var(--p-red-500);
 }
 
 #definition-panel-container:deep(.p-tabview-panels) {

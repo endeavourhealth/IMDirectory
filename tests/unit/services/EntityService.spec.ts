@@ -1,94 +1,37 @@
-import axios from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ConceptService, EntityService, Env } from "@/services";
+import { RDFS } from "@endeavour/vue-library/enums";
 
-const api = Env.API;
+import { EntityService } from "@/services";
 
-describe("EntityService.ts ___ axios success", () => {
+import api from "../../../src/services/api";
+
+describe("EntityService.getLabels", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    axios.get = vi.fn().mockResolvedValue("axios get return");
-    axios.post = vi.fn().mockResolvedValue("axios post return");
+    api.post = vi.fn();
   });
 
-  it("can get partial entity", async () => {
-    const result = await EntityService.getPartialEntity("testIri", ["pred_1", "pred_2", "pred_3"]);
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/partial", { params: { iri: "testIri", predicates: "pred_1,pred_2,pred_3" } });
-    expect(result).toBe("axios get return");
+  it("fetches every label in a single request", async () => {
+    api.post = vi.fn().mockResolvedValue([
+      { iri: "http://endhealth.info/im#a", [RDFS.LABEL]: "A" },
+      { iri: "http://endhealth.info/im#b", [RDFS.LABEL]: "B" }
+    ]);
+    const labels = await EntityService.getLabels(["http://endhealth.info/im#a", "http://endhealth.info/im#b", "http://endhealth.info/im#a"]);
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(labels.get("http://endhealth.info/im#a")).toBe("A");
+    expect(labels.get("http://endhealth.info/im#b")).toBe("B");
   });
 
-  it("can get entity parents", async () => {
-    const result = await EntityService.getEntityParents("testIri");
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/parents", { params: { iri: "testIri" } });
-    expect(result).toBe("axios get return");
+  it("omits iris that have no label", async () => {
+    api.post = vi.fn().mockResolvedValue([{ iri: "http://endhealth.info/im#a" }]);
+    const labels = await EntityService.getLabels(["http://endhealth.info/im#a"]);
+    expect(labels.size).toBe(0);
   });
 
-  it("can get entity children", async () => {
-    const controller = new AbortController();
-    const result = await EntityService.getEntityChildren("testIri", undefined, controller);
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/children", { params: { iri: "testIri" }, signal: controller.signal });
-    expect(result).toBe("axios get return");
-  });
-
-  it("can get entity usages", async () => {
-    const result = await EntityService.getEntityUsages("testIri", 1, 25);
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/usages", { params: { iri: "testIri", page: 1, size: 25 } });
-    expect(result).toBe("axios get return");
-  });
-
-  it("can get usages total records", async () => {
-    const result = await EntityService.getUsagesTotalRecords("testIri");
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/usagesTotalRecords", { params: { iri: "testIri" } });
-    expect(result).toBe("axios get return");
-  });
-
-  it("can get entity graph", async () => {
-    const result = await EntityService.getEntityGraph("testIri");
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/graph", { params: { iri: "testIri" } });
-    expect(result).toBe("axios get return");
-  });
-
-  it("can get entity term codes", async () => {
-    const result = await ConceptService.getEntityTermCodes("testIri");
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/concept/protected/termCode", { params: { iri: "testIri" } });
-    expect(result).toBe("axios get return");
-  });
-
-  it("can get partial bundle", async () => {
-    const result = await EntityService.getPartialEntityBundle("testIri", ["testPredicate1", "testPredicate2"]);
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/partialBundle", {
-      params: { iri: "testIri", predicates: "testPredicate1,testPredicate2" }
-    });
-    expect(result).toBe("axios get return");
-  });
-
-  it("can get entity summary", async () => {
-    const result = await EntityService.getEntitySummary("testIri");
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/protected/summary", { params: { iri: "testIri" } });
-    expect(result).toBe("axios get return");
-  });
-
-  it("can get namespaces", async () => {
-    const result = await EntityService.getNamespaces();
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/entity/public/namespaces");
-    expect(result).toBe("axios get return");
-  });
-
-  it("can getMatchedFrom", async () => {
-    const result = await ConceptService.getMatchedFrom("testString");
-    expect(axios.get).toHaveBeenCalledTimes(1);
-    expect(axios.get).toHaveBeenCalledWith(api + "api/concept/protected/matchedFrom", { params: { iri: "testString" } });
-    expect(result).toBe("axios get return");
+  it("makes no request for an empty list", async () => {
+    const labels = await EntityService.getLabels([]);
+    expect(api.post).not.toHaveBeenCalled();
+    expect(labels.size).toBe(0);
   });
 });

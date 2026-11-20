@@ -1,10 +1,9 @@
-import { ComponentPublicInstance, createApp } from "vue";
-
-import { injectionKeysVueLibrary } from "@endeavour/vue-library";
-import { IMFontAwesomeIcon } from "@endeavour/vue-library/components";
-
 import Aura from "@primeuix/themes/aura";
-import { createPinia } from "pinia";
+import { ComponentPublicInstance, createApp } from "vue";
+import { injectionKeysVueLibrary, setSafeParseApiResponse } from "@endeavour/vue-library";
+import { IMFontAwesomeIcon } from "@endeavour/vue-library/components";
+import "@endeavour/vue-library/components.css";
+import { UserRole } from "@endeavour/vue-library/enums";
 import PrimeVue from "primevue/config";
 import ConfirmationService from "primevue/confirmationservice";
 import DialogService from "primevue/dialogservice";
@@ -13,24 +12,14 @@ import StyleClass from "primevue/styleclass";
 import ToastService from "primevue/toastservice";
 import Tooltip from "primevue/tooltip";
 import VueClipboard from "vue3-clipboard";
-import { VueShowdownPlugin } from "vue-showdown";
-
 import { useSharedStore } from "@/stores/sharedStore";
-
 import App from "./App.vue";
 import "./assets/tailwind.css";
 import { useDirectService } from "./composables/useDirectService";
-import { worker } from "./mocks/browser";
 import router from "./router";
+import { setModes } from "./router/methods/setModes.js";
 import { EntityService, UserService } from "./services";
-import { UserRole } from "@endeavour/vue-library/enums";
-
-declare module "axios" {
-  export interface AxiosRequestConfig {
-    raw?: boolean;
-    silent?: boolean;
-  }
-}
+import pinia from "./stores";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -44,10 +33,15 @@ declare module "vue-router" {
 
 // msw initialising
 if (import.meta.env.MODE === "mock") {
+  const { worker } = await import("./mocks/browser");
   await worker.start();
 }
 
-const pinia = createPinia();
+console.log("SAFE PARSE MODE");
+const safeParse = import.meta.env.VITE_SAFE_PARSE_MODE == "true" || false;
+console.log(safeParse);
+setSafeParseApiResponse(safeParse);
+console.log("---------------");
 
 const app = createApp(App)
   .use(pinia)
@@ -64,7 +58,6 @@ const app = createApp(App)
     autoSetContainer: true,
     appendToBody: true
   })
-  .use(VueShowdownPlugin, { flavor: "github" })
   .directive("tooltip", Tooltip)
   .directive("styleclass", StyleClass)
   .directive("ripple", Ripple)
@@ -74,6 +67,8 @@ const app = createApp(App)
   .provide(injectionKeysVueLibrary.entityService, EntityService);
 
 const sharedStore = useSharedStore();
+
+await setModes();
 
 app.mount("#app");
 
