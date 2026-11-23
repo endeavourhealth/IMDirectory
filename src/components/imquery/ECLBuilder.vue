@@ -82,32 +82,29 @@
     </template>
   </Dialog>
   <MembersComparison
-    v-if="showComparison"
-    :currentMembers="currentMembers"
-    :loading="comparisonLoading"
-    :newMembers="newMembers"
+    v-if="showComparison && setIri && comparisonQuery"
+    :query="comparisonQuery"
+    :setIri="setIri"
+    @addMember="onAddMember"
     @closeDialog="showComparison = false"
   />
 </template>
 
 <script lang="ts" setup>
+import { cloneDeep } from "lodash-es";
 import { Ref, computed, onMounted, provide, readonly, ref, watch } from "vue";
-
 import { AlertDialog } from "@endeavour/vue-library/components";
 import { useCopyToClipboard } from "@endeavour/vue-library/composables";
 import { Entail } from "@endeavour/vue-library/enums";
 import { isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import { type Query, type SearchResponse } from "@endeavour/vue-library/models";
+import { type Query } from "@endeavour/vue-library/models";
 import { useDialogStore } from "@endeavour/vue-library/stores";
-
-import { cloneDeep } from "lodash-es";
 import { useDialog } from "primevue/usedialog";
-
 import ECLExpressionConstraint from "@/components/imquery/ECLExpressionConstraint.vue";
 import MembersComparison from "@/components/imquery/MembersComparison.vue";
 import { useEclValidator } from "@/composables/useEclValidator";
+import { type ComparedMember, addMemberToDefinition } from "@/helpers/MemberComparison";
 import { type ECLQueryRequest } from "@/models";
-import { SetService } from "@/services";
 import EclService from "@/services/EclService";
 import QueryService from "@/services/QueryService";
 
@@ -144,9 +141,7 @@ const wasDraggedAndDropped = ref(false);
 const op = ref();
 const group: Ref<number[]> = ref([]);
 const showComparison = ref(false);
-const comparisonLoading = ref(false);
-const currentMembers: Ref<SearchResponse | undefined> = ref();
-const newMembers: Ref<SearchResponse | undefined> = ref();
+const comparisonQuery: Ref<Query | undefined> = ref();
 const isDefined = computed(() => hasDefinition());
 provide("wasDraggedAndDropped", wasDraggedAndDropped);
 provide("includeTerms", readonly(includeTerms));
@@ -196,6 +191,7 @@ async function rationaliseBooleans() {
 
 async function createBuildFromQuery(query: Query) {
   build.value = cloneDeep(query!);
+  build.value = await EclService.optimiseOrs(build.value);
 }
 
 async function preview() {
@@ -227,7 +223,7 @@ async function submit(): Promise<void> {
 function hasDefinition(): boolean {
   if (build.value) {
     if (build.value.is) {
-      if (build.value.is.iri || build.value.is.query) return true;
+      if (build.value.is.iri || build.value.is.in?.length || build.value.is.query) return true;
     }
     if (build.value.where || build.value.or || build.value.and) return true;
   }
@@ -236,50 +232,16 @@ function hasDefinition(): boolean {
 
 async function compareMembers(): Promise<void> {
   if (!props.setIri || !hasDefinition()) return;
-  currentMembers.value = undefined;
-  newMembers.value = undefined;
-  comparisonLoading.value = true;
+  // Compare against the same query that submit() would produce
+  const optimised = await QueryService.optimiseECLQuery(cloneDeep(build.value));
+  comparisonQuery.value = includeSubtypes(optimised);
   showComparison.value = true;
-  try {
-    const optimised = await QueryService.optimiseECLQuery(cloneDeep(build.value));
-    const query = includeSubtypes(optimised);
-    [currentMembers.value, newMembers.value] = await Promise.all([getSavedMembers(props.setIri), getGeneratedMembers(query)]);
-  } catch (err: any) {
-    showComparison.value = false;
-    await displayValidationMessage(true, "Unable to compare members. " + (err?.message ?? ""));
-  } finally {
-    comparisonLoading.value = false;
-  }
 }
 
-async function getSavedMembers(setIri: string): Promise<SearchResponse> {
-  const memberResults = await SetService.getMembers(setIri, false, 1, 1000);
-  const results = { entities: [] } as SearchResponse;
-  if (memberResults.result) {
-    for (const member of memberResults.result) {
-      results.entities!.push({
-        type: [],
-        iri: member.iri!,
-        name: member.name!
-      });
-    }
-  }
-  return results;
-}
-
-async function getGeneratedMembers(query: Query): Promise<SearchResponse> {
-  const memberResults = await SetService.getMembersFromQuery(query, 1, 1000);
-  const results = { entities: [] } as SearchResponse;
-  if (memberResults.result) {
-    for (const member of memberResults.result) {
-      results.entities!.push({
-        type: [],
-        iri: member.iri!,
-        name: member.name!
-      });
-    }
-  }
-  return results;
+/** Adds a saved member to the definition being edited, then refreshes the comparison against the updated definition */
+async function onAddMember(member: ComparedMember): Promise<void> {
+  addMemberToDefinition(member, build.value);
+  await compareMembers();
 }
 
 function closeBuilderDialog(): void {
@@ -376,9 +338,6 @@ function stripValidation(build: any) {
 </script>
 
 <style scoped>
-.swal2-container {
-  z-index: 3000 !important;
-}
 #ecl-builder-dialog {
   display: flex;
   flex-direction: column;

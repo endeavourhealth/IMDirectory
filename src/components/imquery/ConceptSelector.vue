@@ -1,6 +1,7 @@
 <template>
   <div class="concept-container">
     <Select
+      v-if="showEntailment"
       v-model="constraintOperator"
       :options="ConstraintOperatorOptions"
       option-label="label"
@@ -44,13 +45,10 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, Ref, ref, watch } from "vue";
-
+import { cloneDeep, isEqual } from "lodash-es";
+import { Ref, computed, onMounted, ref, watch } from "vue";
 import { IM } from "@endeavour/vue-library/enums";
 import { type Node, type QueryRequest, type SearchResultSummary } from "@endeavour/vue-library/models";
-
-import { cloneDeep, isEqual } from "lodash-es";
-
 import AutocompleteSearchBar from "@/components/shared/AutocompleteSearchBar.vue";
 import { ConstraintOperatorOptions } from "@/constants";
 import { buildIMQueryFromFilters, getConstraintOperator, setConstraintOperator } from "@/helpers/buildQuery";
@@ -59,8 +57,9 @@ import { useFilterStore } from "@/stores/filterStore";
 
 interface Props {
   parent?: any;
+  showEntailment?: boolean;
 }
-defineProps<Props>();
+withDefaults(defineProps<Props>(), { showEntailment: true });
 const searchBar = ref<{ searchText: string; focus: () => void } | null>(null);
 defineExpose({ focus: () => searchBar.value?.focus() });
 const emit = defineEmits(["activateInput", "updateMatch"]);
@@ -98,7 +97,8 @@ function init() {
   }
 }
 function updateConstraintOperator(e: { value: string }) {
-  setConstraintOperator(node.value, e.value);
+  if (e.value) setConstraintOperator(node.value, e.value);
+  else delete node.value.entails;
   constraintOperator.value = e.value;
 }
 
@@ -125,7 +125,7 @@ function updateConcept(concept: SearchResultSummary) {
 
 <style lang="scss" scoped>
 .concept-container {
-  flex: 1 0 0%;
+  flex: 1 0 0;
   display: flex;
   flex-flow: row nowrap;
   justify-content: flex-start;
@@ -139,7 +139,7 @@ function updateConcept(concept: SearchResultSummary) {
 }
 
 .auto-complete-container {
-  flex: 1 1 0%;
+  flex: 1 1 0;
   min-width: 0;
 }
 .sync-warning {

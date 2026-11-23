@@ -46,6 +46,7 @@
       <div class="button-container">
         <Button aria-controls="import_menu" aria-haspopup="true" label="Import" @click="toggleMenuOptions" />
         <Menu id="import_menu" ref="importMenu" :model="buttonOptions" :popup="true" />
+        <Button v-if="ecl === ''" label="Generate auto ecl" severity="info" @click="generateAutoEcl" />
         <Button :loading="loading" data-testid="builder-button" label="Set builder" severity="help" @click="showBuilder" />
         <Button data-testid="ecl-validate-button" label="Validate model" severity="info" @click="validateModel(false)" />
         <Button data-testid="expansion-preview-button" label="Preview expansion" severity="info" @click="previewExpansion()" />
@@ -220,6 +221,13 @@ onMounted(async () => {
   loading.value = false;
 });
 
+async function generateAutoEcl() {
+  if (editorEntity.value && editorEntity.value[IM.ID]) {
+    ecl.value = await EclService.getEclFromMembers(editorEntity.value[IM.ID] as string);
+    lastValidEcl.value = ecl.value;
+  }
+}
+
 async function validateModel(showOnlyInvalid?: boolean) {
   if (lastValidEcl) {
     const eclQuery = await EclService.validateModelFromECL(lastValidEcl.value, showNames.value);
@@ -257,13 +265,8 @@ async function processProps() {
     eclQuery.value = await EclService.getECLFromQuery(JSON.parse(props.value), showNames.value);
     ecl.value = eclQuery.value.ecl!;
     lastValidEcl.value = ecl.value;
-  } else {
-    if (editorEntity.value && editorEntity.value[IM.ID]) {
-      ecl.value = await EclService.getEclFromMembers(editorEntity.value[IM.ID] as string);
-      lastValidEcl.value = ecl.value;
-    }
-    initialised.value = true;
   }
+  initialised.value = true;
 }
 
 function toggleMenuOptions(event: MouseEvent) {

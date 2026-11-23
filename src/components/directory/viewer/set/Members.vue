@@ -1,30 +1,30 @@
 <template>
   <div id="members-table-container">
     <DataTable
-      :value="members"
-      showGridlines
-      :scrollable="true"
-      sortMode="single"
-      sortField="label"
-      :sortOrder="1"
-      class="p-datatable-sm"
-      scrollHeight="flex"
-      :loading="loading"
-      data-testid="table"
-      :lazy="true"
-      :paginator="true"
-      :rowsPerPageOptions="[25, 50, 100]"
       v-model:first="first"
       v-model:rows="pageSize"
-      :totalRecords="totalCount"
-      paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
       :currentPageReportTemplate="templateString"
+      :lazy="true"
+      :loading="loading"
+      :paginator="true"
+      :rowsPerPageOptions="[25, 50, 100]"
+      :scrollable="true"
+      :sortOrder="1"
+      :totalRecords="totalCount"
+      :value="members"
+      class="p-datatable-sm"
+      data-testid="table"
+      paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+      scrollHeight="flex"
+      showGridlines
+      sortField="label"
+      sortMode="single"
       @page="getPage($event)"
     >
       <template #empty>
         No direct or entailed members found.
         <div v-if="hasDefinition">
-          <Button label="Download to see query definition results" class="p-button-link" @click="emit('openDownloadDialog')" />
+          <Button class="p-button-link" label="Download to see query definition results" @click="emit('openDownloadDialog')" />
         </div>
       </template>
       <template #loading> Loading data. Please wait... </template>
@@ -39,13 +39,11 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script lang="ts" setup>
 import { Ref, onMounted, ref, watch } from "vue";
-
 import { IM } from "@endeavour/vue-library/enums";
 import { isObjectHasKeys } from "@endeavour/vue-library/helpers";
 import type { Node, Query } from "@endeavour/vue-library/models";
-
 import IMViewerLink from "@/components/shared/IMViewerLink.vue";
 import { EntityService, SetService } from "@/services";
 
@@ -105,11 +103,9 @@ async function setHasDefinition() {
 async function getMembers(): Promise<void> {
   loading.value = true;
   try {
-    // The server page number is 1-based; derive it from the paginator's row offset
     const page = Math.floor(first.value / pageSize.value) + 1;
     let paged;
     if (props.entityIri) paged = await SetService.getMembers(props.entityIri, true, page, pageSize.value);
-    else if (props.eclQuery) paged = await SetService.getMembersFromQuery(props.eclQuery, page, pageSize.value);
     if (paged) {
       members.value = paged.result;
       totalCount.value = paged.totalCount;
@@ -179,14 +175,14 @@ function getEntailment(data: any) {
 .custom-button span:before {
   left: 0;
   top: 0;
-  width: 0%;
+  width: 0;
   height: 2px;
   transition: all 500ms ease;
 }
 .custom-button span:after {
   right: 0;
   bottom: 0;
-  width: 0%;
+  width: 0;
   height: 2px;
   transition: all 500ms ease;
 }

@@ -6,26 +6,26 @@
       <div class="text-copy-container">
         <div class="ecl-panel">
           <div class="ecl-container">
-            <div class="html-preview" v-html="highlightedText" ref="highlightDiv" />
+            <div ref="highlightDiv" class="html-preview" v-html="highlightedText" />
             <Textarea
-              v-model="eclQueryString"
               id="query-string-container"
-              placeholder="Enter expression here or use the ECL builder to generate your search..."
-              data-testid="query-string"
+              v-model="eclQueryString"
               class="transparent-textarea"
+              data-testid="query-string"
+              placeholder="Enter expression here or use the ECL builder to generate your search..."
               @keydown="onKeyDown"
               @keyup="onKeyUp"
             />
             <div class="flex items-center">
               <Button
-                class="ml-4"
-                :disabled="!eclQueryString.length"
-                icon="fa-solid fa-copy"
-                v-tooltip.left="'Copy to clipboard'"
                 v-clipboard:copy="copyToClipboard()"
-                v-clipboard:success="onCopy"
                 v-clipboard:error="onCopyError"
+                v-clipboard:success="onCopy"
+                v-tooltip.left="'Copy to clipboard'"
+                :disabled="!eclQueryString.length"
+                class="ml-4"
                 data-testid="copy-to-clipboard-button"
+                icon="fa-solid fa-copy"
               />
             </div>
           </div>
@@ -34,27 +34,27 @@
             <label for="">Show names </label>
             <Checkbox v-model="showNames" :binary="true" class="m-2" />
           </div>
-          <div class="error-message" v-if="!setDefinition.status!.valid">
+          <div v-if="!setDefinition.status!.valid" class="error-message">
             Invalid ECL : line {{ setDefinition.status!.line }}, offset {{ setDefinition.status!.offset }} -> {{ setDefinition.status!.message }}
           </div>
         </div>
       </div>
     </div>
     <div class="button-container">
-      <Button label="ECL builder" @click="showBuilder" severity="help" data-testid="builder-button" />
+      <Button data-testid="builder-button" label="ECL builder" severity="help" @click="showBuilder" />
       <Button
-        label="Search"
-        :loading="searchLoading"
-        @click="onSearch()"
-        class="p-button-primary"
         :disabled="!eclQueryString.length || !setDefinition.status!.valid"
+        :loading="searchLoading"
+        class="p-button-primary"
         data-testid="ecl-search-button"
+        label="Search"
+        @click="onSearch()"
       />
     </div>
     <div class="filters-container">
       <div class="status-filter p-inputgroup">
         <FloatLabel>
-          <MultiSelect id="status" v-model="selectedStatus" optionLabel="name" @change="onSearch()" :options="statusOptions" display="chip" />
+          <MultiSelect id="status" v-model="selectedStatus" :options="statusOptions" display="chip" optionLabel="name" @change="onSearch()" />
           <label for="status">Select status:</label>
         </FloatLabel>
       </div>
@@ -62,32 +62,29 @@
     <div v-if="setDefinition && setDefinition.query" class="results-container">
       <ResultsTable
         v-model:loading="searchLoading"
-        :update-search="updateSearch"
         :ecl-query="setDefinition"
         :page-size="12"
-        @rowSelected="(selected: SearchResultSummary) => emit('selectedUpdated', selected)"
+        :update-search="updateSearch"
         @locateInTree="(iri: string) => $emit('locateInTree', iri)"
+        @rowSelected="(selected: SearchResultSummary) => emit('selectedUpdated', selected)"
       />
     </div>
     <ECLBuilder
       v-if="showDialog && setDefinition && setDefinition.query"
-      :showDialog="showDialog"
-      :query="setDefinition.query"
-      @eclSubmitted="updateECL"
-      @closeDialog="showDialog = false"
       :key="builderKey"
+      :query="setDefinition.query"
+      :showDialog="showDialog"
+      @closeDialog="showDialog = false"
+      @eclSubmitted="updateECL"
     />
   </div>
 </template>
 
-<script setup lang="ts">
+<script lang="ts" setup>
 import { Ref, computed, onMounted, ref, watch } from "vue";
-
 import { useCopyToClipboard } from "@endeavour/vue-library/composables";
-import { IM } from "@endeavour/vue-library/enums";
 import { byName } from "@endeavour/vue-library/helpers";
 import { type GenericObject, type SearchResultSummary, type TTIriRef } from "@endeavour/vue-library/models";
-
 import ECLBuilder from "@/components/imquery/ECLBuilder.vue";
 import ResultsTable from "@/components/shared/ResultsTable.vue";
 import { type ECLQueryRequest } from "@/models";

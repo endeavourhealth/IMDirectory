@@ -1,12 +1,9 @@
-import { TTIriRefSchema, parseArray } from "@endeavour/vue-library";
-import { parseApiResponse } from "@endeavour/vue-library/helpers";
-import { type PageableNode, PageableNodeSchema, type Query, type TTIriRef } from "@endeavour/vue-library/models";
-import type { TTEntity } from "@endeavour/vue-library/models";
-
 import z from "zod";
-
+import { TTIriRefSchema } from "@endeavour/vue-library";
+import { parseApiResponse } from "@endeavour/vue-library/helpers";
+import type { SearchResponse, TTEntity } from "@endeavour/vue-library/models";
+import { type PageableNode, PageableNodeSchema, type TTIriRef } from "@endeavour/vue-library/models";
 import { type ECLQueryRequest, type SetDiffObject, SetDiffObjectSchema, type SetExportRequest } from "@/models";
-
 import Env from "./Env";
 import api from "./api";
 
@@ -34,11 +31,22 @@ const SetService = {
     return parseApiResponse(result, PageableNodeSchema);
   },
 
-
-  async getMembersFromQuery(query: Query, pageIndex: number, pageSize: number): Promise<PageableNode> {
-    const request = { query: query, page: pageIndex, size: pageSize } as ECLQueryRequest;
-    const result = await api.post(API_URL + "/protected/membersFromQuery", request);
+  async getMembersFromIri(iri: string, entailments: boolean, pageIndex: number, pageSize: number, controller?: AbortController): Promise<PageableNode> {
+    const result = await api.get(API_URL + "/protected/members", {
+      params: { iri: iri, entailments: entailments, page: pageIndex, size: pageSize },
+      signal: controller?.signal
+    });
     return parseApiResponse(result, PageableNodeSchema);
+  },
+  async getCurrentMembers(iri: string, includeInactive: Boolean, controller?: AbortController): Promise<SearchResponse> {
+    return await api.get(API_URL + "/protected/currentMembers", {
+      params: { iri: iri, includeInactive: includeInactive },
+      signal: controller?.signal
+    });
+  },
+
+  async getMembersFromQuery(request: ECLQueryRequest, controller?: AbortController): Promise<SearchResponse> {
+    return await api.post(API_URL + "/protected/membersFromQuery", request, { signal: controller?.signal });
   },
 
   async getSubsets(iri: string): Promise<TTIriRef[]> {
