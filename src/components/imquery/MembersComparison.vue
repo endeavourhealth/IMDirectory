@@ -13,8 +13,7 @@
       <strong class="comparison-title">Compare members</strong>
     </template>
 
-    <div v-if="loading" class="comparison-loading"><ProgressSpinner /></div>
-    <div v-else class="comparison-content">
+    <div class="comparison-content">
       <div class="comparison-toolbar">
         <div class="comparison-summary" data-testid="members-comparison-summary">
           <Tag :value="`${comparison.added} added`" icon="fa-solid fa-plus" severity="success" />
@@ -22,19 +21,27 @@
           <Tag :value="`${comparison.unchanged} unchanged`" severity="secondary" />
         </div>
         <div class="comparison-filters">
+          <label class="inactive-toggle">
+            <ToggleSwitch v-model="includeInactive" :disabled="loading" data-testid="members-comparison-include-inactive" inputId="include-inactive" />
+            <span>Include inactive concepts</span>
+          </label>
           <InputText v-model="filterText" data-testid="members-comparison-filter" placeholder="Filter by name or code" />
           <SelectButton v-model="viewMode" :allowEmpty="false" :options="viewModes" optionLabel="label" optionValue="value" />
         </div>
       </div>
 
-      <Message v-if="truncated" :closable="false" severity="warn">
-        Not all members were loaded, so some members may be wrongly shown as added or removed.
-      </Message>
-      <Message v-else-if="!comparison.added && !comparison.removed" :closable="false" severity="info">
-        The new definition generates the same members as those currently saved.
-      </Message>
+      <div v-if="loading" class="comparison-loading" data-testid="members-comparison-loading"><ProgressSpinner /></div>
+      <template v-else>
+        <Message v-if="loadError" :closable="false" data-testid="members-comparison-error" severity="error"> Unable to load members. {{ loadError }} </Message>
+        <Message v-else-if="truncated" :closable="false" severity="warn">
+          Not all members were loaded, so some members may be wrongly shown as added or removed.
+        </Message>
+        <Message v-else-if="!comparison.added && !comparison.removed" :closable="false" severity="info">
+          The new definition generates the same members as those currently saved.
+        </Message>
+      </template>
 
-      <div class="comparison-panels">
+      <div v-if="!loading" :class="{ 'with-hierarchy': selectedIri }" class="comparison-panels">
         <div v-for="panel in panels" :key="panel.key" :data-testid="`members-comparison-${panel.key}`" class="comparison-panel">
           <div class="panel-header">
             <span class="panel-title">{{ panel.title }}</span>
@@ -49,6 +56,7 @@
             scrollHeight="60vh"
             scrollable
             showGridlines
+            @row-click="onRowClick"
           >
             <template #empty>{{ panel.emptyMessage }}</template>
             <Column header="" style="width: 2.5rem">
@@ -58,15 +66,46 @@
               </template>
             </Column>
             <Column field="name" header="Name">
-              <template #body="{ data }: { data: ComparedMember }">{{ data.name ?? data.iri }}</template>
-            </Column>
-            <Column field="code" header="Code" style="width: 20%">
-              <template #body="{ data }: { data: ComparedMember }">{{ data.code ?? "" }}</template>
+              <template #body="{ data }: { data: ComparedMember }">
+                {{ data.code + " | " + (data.name ?? data.iri) }}
+              </template>
             </Column>
             <Column header="Status" style="width: 15%">
-              <template #body="{ data }: { data: ComparedMember }">{{ data.status?.iri === IM.ACTIVE ? "Active" : "Inactive" }}</template>
+              <template #body="{ data }: { data: ComparedMember }">{{ isInactive(data) ? "Inactive" : "Active" }}</template>
+            </Column>
+            <Column v-if="panel.key === 'current'" header="" style="width: 3rem">
+              <template #body="{ data }: { data: ComparedMember }">
+                <Button
+                  v-if="data.change === 'removed'"
+                  v-tooltip="'Add to definition'"
+                  :data-testid="`add-member-${data.code}`"
+                  icon="fa-solid fa-arrow-right"
+                  rounded
+                  size="small"
+                  text
+                  @click.stop="emit('addMember', data)"
+                />
+              </template>
             </Column>
           </DataTable>
+        </div>
+        <div v-if="selectedIri" class="comparison-panel hierarchy-panel" data-testid="members-comparison-hierarchy">
+          <div class="panel-header">
+            <span class="panel-title">Hierarchy</span>
+            <Button
+              v-tooltip="'Close hierarchy'"
+              data-testid="close-hierarchy-button"
+              icon="fa-solid fa-xmark"
+              rounded
+              severity="secondary"
+              size="small"
+              text
+              @click="selectedIri = undefined"
+            />
+          </div>
+          <div class="hierarchy-content">
+            <SecondaryTree :entityIri="selectedIri" @row-clicked="(iri: string) => (selectedIri = iri)" @row-control-clicked="openInNewTab" />
+          </div>
         </div>
       </div>
     </div>
@@ -78,21 +117,28 @@
 </template>
 
 <script lang="ts" setup>
-import { Ref, computed, onMounted, ref } from "vue";
-import { IM } from "@endeavour/vue-library/enums";
-import type { Query, SearchResponse } from "@endeavour/vue-library/models";
-import { type ComparedMember, compareMembers, isTruncated } from "@/helpers/MemberComparison";
+import { type Ref, computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import type { Query, SearchResponse, TTIriRef } from "@endeavour/vue-library/models";
+import type { DataTableRowClickEvent } from "primevue/datatable";
+import SecondaryTree from "@/components/shared/SecondaryTree.vue";
+import { useDirectService } from "@/composables/useDirectService";
+import { type ComparedMember, compareMembers, isInactive, isTruncated } from "@/helpers/MemberComparison";
+import { ECLQueryRequest } from "@/models";
 import { SetService } from "@/services";
+import { useFilterStore } from "@/stores/filterStore";
 
 interface Props {
+  /** The new definition to generate members from */
   query: Query;
+  /** Iri of the saved set whose current members are compared */
   setIri: string;
-  loading?: boolean;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
   closeDialog: [];
+  /** A saved member, removed by the new definition, that the user wants added to the definition */
+  addMember: [member: ComparedMember];
 }>();
 
 type ViewMode = "all" | "changes";
@@ -104,14 +150,26 @@ const viewMode = ref<ViewMode>("all");
 const filterText = ref("");
 const currentMembers: Ref<SearchResponse | undefined> = ref();
 const newMembers: Ref<SearchResponse | undefined> = ref();
-const includeInactive= ref(false);
+/** When true both panels also retrieve the inactive concepts linked to their members */
+const includeInactive = ref(false);
+const loading = ref(false);
+const loadError = ref("");
+const selectedIri = ref<string>();
+const directService = useDirectService();
+let controller: AbortController | undefined;
+const filterStore = useFilterStore();
 const comparison = computed(() => compareMembers(currentMembers.value, newMembers.value));
-const truncated = computed(() => isTruncated());
+const truncated = computed(() => isTruncated(currentMembers.value) || isTruncated(newMembers.value));
+const coreSchemes: Ref<TTIriRef[]> = computed(() =>
+  filterStore.coreSchemes.map(scheme => ({
+    iri: scheme
+  }))
+);
 
 const panels = computed(() => [
   {
     key: "current",
-    title: "Current saved members",
+    title: "Current saved members ('-' indicates not in the new definition)",
     total: comparison.value.current.length,
     members: applyFilters(comparison.value.current),
     emptyMessage: emptyMessage(comparison.value.current.length, "No saved members.", "No members are removed by the new definition.")
@@ -121,19 +179,61 @@ const panels = computed(() => [
     title: "New definition members",
     total: comparison.value.updated.length,
     members: applyFilters(comparison.value.updated),
-    emptyMessage: emptyMessage(comparison.value.updated.length, "The new definition generates no members.", "No members are added by the new definition.")
+    emptyMessage: emptyMessage(
+      comparison.value.updated.length,
+      "The new definition generates no members.",
+      "Definition does not create members that are not in the saved set."
+    )
   }
 ]);
 
 onMounted(async () => {
-  await init();
+  await loadMembers();
 });
 
-async function init() {
-  if (!currentMembers.value) {
-    currentMembers.value = await SetService.getCurrentMembers(props.setIri,includeInactive.value);
+onBeforeUnmount(() => controller?.abort());
+
+watch(includeInactive, async () => await loadMembers());
+
+// The parent supplies a new query object whenever the definition changes, e.g. after a member is added
+watch(
+  () => props.query,
+  async () => await loadMembers()
+);
+
+/** Loads both member lists with the same includeInactive flag so that the comparison stays like for like */
+async function loadMembers(): Promise<void> {
+  controller?.abort();
+  const thisController = new AbortController();
+  controller = thisController;
+  loading.value = true;
+  loadError.value = "";
+  try {
+    const request = { query: props.query, includeInactive: includeInactive.value, schemeFilter: coreSchemes.value } as ECLQueryRequest;
+    const [current, updated] = await Promise.all([
+      SetService.getCurrentMembers(props.setIri, includeInactive.value, thisController),
+      SetService.getMembersFromQuery(request, thisController)
+    ]);
+    currentMembers.value = current;
+    newMembers.value = updated;
+  } catch (err: any) {
+    if (thisController.signal.aborted) return;
+    currentMembers.value = undefined;
+    newMembers.value = undefined;
+    loadError.value = err?.message ?? "";
+  } finally {
+    if (controller === thisController) loading.value = false;
   }
-  newMembers.value = await SetService.getMembersFromQuery(props.query, includeInactive.value);
+}
+
+function onRowClick(event: DataTableRowClickEvent): void {
+  const member = event.data as ComparedMember;
+  if (event.originalEvent instanceof MouseEvent && (event.originalEvent.ctrlKey || event.originalEvent.metaKey)) openInNewTab(member.iri);
+  else selectedIri.value = member.iri;
+}
+
+async function openInNewTab(iri: string): Promise<void> {
+  await directService.view(iri);
 }
 
 function applyFilters(members: ComparedMember[]): ComparedMember[] {
@@ -151,8 +251,11 @@ function emptyMessage(total: number, noMembers: string, noChanges: string): stri
   return noChanges;
 }
 
-function rowClass(data: ComparedMember): string {
-  return "member-" + data.change;
+function rowClass(data: ComparedMember): string[] {
+  const classes = ["member-" + data.change];
+  if (isInactive(data)) classes.push("member-inactive");
+  if (data.iri === selectedIri.value) classes.push("member-selected");
+  return classes;
 }
 </script>
 
@@ -247,5 +350,40 @@ function rowClass(data: ComparedMember): string {
 
 .comparison-panel:deep(tr.member-removed .fa-minus) {
   color: var(--p-red-600);
+}
+
+.comparison-panel:deep(tr) {
+  cursor: pointer;
+}
+
+.comparison-panel:deep(tr.member-inactive > td) {
+  color: var(--p-text-muted-color);
+  font-style: italic;
+}
+
+.comparison-panel:deep(tr.member-selected > td) {
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--p-primary-color) 15%, transparent);
+}
+
+.comparison-panels.with-hierarchy {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.hierarchy-panel .panel-header {
+  align-items: center;
+}
+
+.hierarchy-content {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+  max-height: 60vh;
+}
+
+.inactive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
 }
 </style>

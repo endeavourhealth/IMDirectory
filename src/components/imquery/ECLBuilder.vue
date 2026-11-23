@@ -81,7 +81,13 @@
       <Button class="p-button-primary" data-testid="ecl-ok-button" icon="fa-solid fa-check" label="OK" @click="submit" />
     </template>
   </Dialog>
-  <MembersComparison v-if="showComparison && setIri" :query="build" :setIri="setIri" @closeDialog="showComparison = false" />
+  <MembersComparison
+    v-if="showComparison && setIri && comparisonQuery"
+    :query="comparisonQuery"
+    :setIri="setIri"
+    @addMember="onAddMember"
+    @closeDialog="showComparison = false"
+  />
 </template>
 
 <script lang="ts" setup>
@@ -91,14 +97,14 @@ import { AlertDialog } from "@endeavour/vue-library/components";
 import { useCopyToClipboard } from "@endeavour/vue-library/composables";
 import { Entail } from "@endeavour/vue-library/enums";
 import { isObjectHasKeys } from "@endeavour/vue-library/helpers";
-import { type Query, type SearchResponse } from "@endeavour/vue-library/models";
+import { type Query } from "@endeavour/vue-library/models";
 import { useDialogStore } from "@endeavour/vue-library/stores";
 import { useDialog } from "primevue/usedialog";
 import ECLExpressionConstraint from "@/components/imquery/ECLExpressionConstraint.vue";
 import MembersComparison from "@/components/imquery/MembersComparison.vue";
 import { useEclValidator } from "@/composables/useEclValidator";
+import { type ComparedMember, addMemberToDefinition } from "@/helpers/MemberComparison";
 import { type ECLQueryRequest } from "@/models";
-import { SetService } from "@/services";
 import EclService from "@/services/EclService";
 import QueryService from "@/services/QueryService";
 
@@ -135,7 +141,7 @@ const wasDraggedAndDropped = ref(false);
 const op = ref();
 const group: Ref<number[]> = ref([]);
 const showComparison = ref(false);
-const comparisonLoading = ref(false);
+const comparisonQuery: Ref<Query | undefined> = ref();
 const isDefined = computed(() => hasDefinition());
 provide("wasDraggedAndDropped", wasDraggedAndDropped);
 provide("includeTerms", readonly(includeTerms));
@@ -226,10 +232,17 @@ function hasDefinition(): boolean {
 
 async function compareMembers(): Promise<void> {
   if (!props.setIri || !hasDefinition()) return;
+  // Compare against the same query that submit() would produce
+  const optimised = await QueryService.optimiseECLQuery(cloneDeep(build.value));
+  comparisonQuery.value = includeSubtypes(optimised);
   showComparison.value = true;
 }
 
-
+/** Adds a saved member to the definition being edited, then refreshes the comparison against the updated definition */
+async function onAddMember(member: ComparedMember): Promise<void> {
+  addMemberToDefinition(member, build.value);
+  await compareMembers();
+}
 
 function closeBuilderDialog(): void {
   emit("closeDialog");
@@ -325,9 +338,6 @@ function stripValidation(build: any) {
 </script>
 
 <style scoped>
-.swal2-container {
-  z-index: 3000 !important;
-}
 #ecl-builder-dialog {
   display: flex;
   flex-direction: column;

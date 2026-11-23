@@ -2,7 +2,7 @@ import z from "zod";
 import { TTIriRefSchema } from "@endeavour/vue-library";
 import { parseApiResponse } from "@endeavour/vue-library/helpers";
 import type { SearchResponse, TTEntity } from "@endeavour/vue-library/models";
-import { type PageableNode, PageableNodeSchema, type Query, type TTIriRef } from "@endeavour/vue-library/models";
+import { type PageableNode, PageableNodeSchema, type TTIriRef } from "@endeavour/vue-library/models";
 import { type ECLQueryRequest, type SetDiffObject, SetDiffObjectSchema, type SetExportRequest } from "@/models";
 import Env from "./Env";
 import api from "./api";
@@ -45,9 +45,8 @@ const SetService = {
     });
   },
 
-  async getMembersFromQuery(query: Query, includeInactive: boolean): Promise<SearchResponse> {
-    const request = { query: query, includeInactive: includeInactive } as ECLQueryRequest;
-    return await api.post(API_URL + "/protected/membersFromQuery", request);
+  async getMembersFromQuery(request: ECLQueryRequest, controller?: AbortController): Promise<SearchResponse> {
+    return await api.post(API_URL + "/protected/membersFromQuery", request, { signal: controller?.signal });
   },
 
   async getSubsets(iri: string): Promise<TTIriRef[]> {
