@@ -22,7 +22,6 @@ function respond(answer: ConfigAnswer) {
   return { ok: true, status: 200, json: async () => answer };
 }
 
-/** The service fetches settings and builds its UserManager once, so each test loads a fresh copy. */
 async function loadAuthService(answer: ConfigAnswer = { url: "https://auth.example.org/", clientId: "client-id" }): Promise<AuthServiceModule> {
   vi.resetModules();
   fetchMock.mockImplementation(async () => respond(answer));

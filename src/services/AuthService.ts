@@ -21,10 +21,10 @@ const SIGNUP_PATH = "/signup/oauth/authorize";
 async function fetchConfig(): Promise<AuthConfig | undefined> {
   const response = await fetch(AUTH_CONFIG_URL, { headers: { Accept: "application/json" } });
   if (response.status === 404) return undefined;
-  if (!response.ok) throw new Error(`Could not load the sign-in settings from IMAPI (HTTP ${response.status})`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}: Could not load the sign-in settings`);
   const body = await response.json();
   if (typeof body?.url !== "string" || !body.url || typeof body?.clientId !== "string" || !body.clientId)
-    throw new Error("IMAPI returned incomplete sign-in settings");
+    throw new Error("Returned incomplete sign-in settings");
   return { url: body.url.replace(/\/+$/, ""), clientId: body.clientId };
 }
 
