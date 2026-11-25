@@ -358,7 +358,7 @@ async function logout() {
 }
 
 async function goToMyProfile() {
-  window.location.href = AuthService.profileUrl();
+  window.location.href = await AuthService.profileUrl();
 }
 
 function openUploadDownloadMenu(event: MouseEvent): void {

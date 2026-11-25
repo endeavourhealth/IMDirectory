@@ -1,3 +1,4 @@
+import z from "zod";
 import { DisplayMode } from "@endeavour/vue-library/enums";
 import { isArrayHasLength, isObjectHasKeys, parseApiResponse } from "@endeavour/vue-library/helpers";
 import {
@@ -14,13 +15,10 @@ import {
   TTEntity,
   TTEntitySchema
 } from "@endeavour/vue-library/models";
-
-import z from "zod";
-
 import { IMLLanguage, IMLLanguageSchema, Indicator, IndicatorSchema, PathDocument, PathDocumentSchema, QueryResponse, QueryResponseSchema } from "@/models";
-
 import Env from "./Env";
 import api from "./api";
+
 const API_URL = Env.API + "api/query/protected";
 
 const QueryService = {
@@ -106,10 +104,6 @@ const QueryService = {
       isArrayHasLength(queryResponse.entities) &&
       queryResponse.entities.some((entity: TTEntity) => entity.iri === selectedIri)
     );
-  },
-
-  async addQueryToRunnerQueue(queryRequest: QueryRequest): Promise<void> {
-    return api.post(Env.QUERY_RUNNER + "/api/queue/job/add", queryRequest);
   },
 
   async testRunQuery(request: QueryRequest): Promise<string[]> {
