@@ -28,7 +28,8 @@ Vite loads these from `.env`, then `.env.<mode>` (`.env.production` for `vite bu
 IMDirectory has no Casdoor variables of its own. At startup it asks IMAPI for them with
 `GET <VITE_API>api/config/public/auth?app=IMDirectory`, which returns IMAPI's `CASDOOR_URL` and its
 `CASDOOR_APP_IMDIRECTORY_CLIENT_ID`. Tokens issued to that client ID are accepted by IMAPI without further
-configuration. If IMAPI answers `404` (either is unset), sign-in is disabled and the app behaves as public. Changing
+configuration. If IMAPI answers `"clientId": null` (either is unset), sign-in is disabled and the app behaves as public.
+Any HTTP error, `404` included, is treated as IMAPI being unreachable: the user is signed out and sign-in reports the error. Changing
 requires IMAPI restart.
 
 ### Casdoor redirect URL

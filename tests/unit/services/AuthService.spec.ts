@@ -13,12 +13,12 @@ const manager = {
 const oidcClient = { createSigninRequest: vi.fn() };
 const fetchMock = vi.fn();
 
-// api/config/public/auth answers settings (200), undefined (404, not configured) or HTTP status.
-type ConfigAnswer = { url: string; clientId: string } | undefined | number;
+// api/config/public/auth answers settings (200, clientId null when not configured) or an HTTP error status.
+type ConfigAnswer = { url: string | null; clientId: string | null } | number;
+const NOT_CONFIGURED: ConfigAnswer = { url: "https://auth.example.org", clientId: null };
 
 function respond(answer: ConfigAnswer) {
   if (typeof answer === "number") return { ok: false, status: answer, json: async () => ({}) };
-  if (!answer) return { ok: false, status: 404, json: async () => ({}) };
   return { ok: true, status: 200, json: async () => answer };
 }
 
@@ -90,7 +90,7 @@ describe("getAccessToken", () => {
   });
 
   it("is undefined, without touching Casdoor, when sign-in is not configured", async () => {
-    const { default: AuthService } = await loadAuthService(404);
+    const { default: AuthService } = await loadAuthService(NOT_CONFIGURED);
     expect(await AuthService.getAccessToken()).toBeUndefined();
     expect(manager.getUser).not.toHaveBeenCalled();
   });
@@ -111,7 +111,7 @@ describe("login", () => {
   });
 
   it("refuses to start when the client id is not configured", async () => {
-    const { default: AuthService } = await loadAuthService(404);
+    const { default: AuthService } = await loadAuthService(NOT_CONFIGURED);
     await expect(AuthService.login()).rejects.toThrow("Sign-in is not configured");
   });
 });
