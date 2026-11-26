@@ -7,7 +7,7 @@ import * as fakerFactory from "@/mocks/fakerFactory";
 const apiUrl = "http://localhost:8082/imapi/api/";
 
 export const handlers = [
-  // No Casdoor in mock mode (404 for public).
+  // 404 as no Casdoor in mock mode
   http.get(apiUrl + "config/public/auth", () => new HttpResponse(null, { status: 404 })),
   http.get(apiUrl + "entity/public/children", ({ params }) => {
     const { iri } = params;
