@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type AuthServiceModule = typeof import("@/services/AuthService");
 
@@ -11,11 +11,21 @@ const manager = {
   removeUser: vi.fn()
 };
 const oidcClient = { createSigninRequest: vi.fn() };
+const fetchMock = vi.fn();
 
-/** The service builds its UserManager lazily and reads Env once, so each test loads a fresh copy. */
-async function loadAuthService(clientId = "client-id"): Promise<AuthServiceModule> {
+// api/config/public/auth answers settings (200, clientId null when not configured) or an HTTP error status.
+type ConfigAnswer = { url: string | null; clientId: string | null } | number;
+const NOT_CONFIGURED: ConfigAnswer = { url: "https://auth.example.org", clientId: null };
+
+function respond(answer: ConfigAnswer) {
+  if (typeof answer === "number") return { ok: false, status: answer, json: async () => ({}) };
+  return { ok: true, status: 200, json: async () => answer };
+}
+
+async function loadAuthService(answer: ConfigAnswer = { url: "https://auth.example.org/", clientId: "client-id" }): Promise<AuthServiceModule> {
   vi.resetModules();
-  vi.stubEnv("VITE_CASDOOR_CLIENT_ID", clientId);
+  fetchMock.mockImplementation(async () => respond(answer));
+  vi.stubGlobal("fetch", fetchMock);
   vi.doMock("oidc-client-ts", () => ({
     UserManager: vi.fn(function () {
       return manager;
@@ -34,6 +44,11 @@ beforeEach(() => {
   vi.resetAllMocks();
   window.sessionStorage.clear();
   window.history.replaceState({}, "", "/");
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("getAccessToken", () => {
@@ -75,7 +90,7 @@ describe("getAccessToken", () => {
   });
 
   it("is undefined, without touching Casdoor, when sign-in is not configured", async () => {
-    const { default: AuthService } = await loadAuthService("");
+    const { default: AuthService } = await loadAuthService(NOT_CONFIGURED);
     expect(await AuthService.getAccessToken()).toBeUndefined();
     expect(manager.getUser).not.toHaveBeenCalled();
   });
@@ -96,8 +111,8 @@ describe("login", () => {
   });
 
   it("refuses to start when the client id is not configured", async () => {
-    const { default: AuthService } = await loadAuthService("");
-    await expect(AuthService.login()).rejects.toThrow("VITE_CASDOOR_CLIENT_ID");
+    const { default: AuthService } = await loadAuthService(NOT_CONFIGURED);
+    await expect(AuthService.login()).rejects.toThrow("Sign-in is not configured");
   });
 });
 
@@ -169,6 +184,47 @@ describe("logout", () => {
 describe("profileUrl", () => {
   it("points at the Casdoor account page", async () => {
     const { default: AuthService } = await loadAuthService();
-    expect(AuthService.profileUrl()).toMatch(/\/account$/);
+    expect(await AuthService.profileUrl()).toBe("https://auth.example.org/account");
+  });
+});
+
+describe("sign-in settings from IMAPI", () => {
+  it("are fetched once, for this app, and passed to oidc-client-ts", async () => {
+    const { default: AuthService, AUTH_CONFIG_URL } = await loadAuthService();
+    const { UserManager } = await import("oidc-client-ts");
+    manager.getUser.mockResolvedValue(null);
+
+    await AuthService.getAccessToken();
+    await AuthService.getIsCurrentUser();
+    await AuthService.login("/");
+
+    expect(AUTH_CONFIG_URL).toBe("/imapi/api/config/public/auth?app=IMDirectory");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(AUTH_CONFIG_URL, expect.anything());
+    expect(UserManager).toHaveBeenCalledTimes(1);
+    expect(UserManager).toHaveBeenCalledWith(expect.objectContaining({ authority: "https://auth.example.org", client_id: "client-id" }));
+  });
+
+  it("treat IMAPI being unreachable as signed out, try again next time", async () => {
+    const { default: AuthService } = await loadAuthService(503);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await AuthService.getAccessToken()).toBeUndefined();
+    expect(await AuthService.getIsCurrentUser()).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(AuthService.login()).rejects.toThrow("HTTP 503");
+  });
+
+  it("are refused when incomplete", async () => {
+    const { default: AuthService } = await loadAuthService({ url: "https://auth.example.org", clientId: "" });
+    await expect(AuthService.login()).rejects.toThrow("incomplete");
+  });
+
+  it("let a sign-up start on Casdoor's sign-up page", async () => {
+    const { default: AuthService } = await loadAuthService();
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, hash: "", assign });
+    oidcClient.createSigninRequest.mockResolvedValue({ url: "https://auth.example.org/login/oauth/authorize?client_id=client-id" });
+    await AuthService.register("/");
+    expect(assign).toHaveBeenCalledWith("https://auth.example.org/signup/oauth/authorize?client_id=client-id");
   });
 });

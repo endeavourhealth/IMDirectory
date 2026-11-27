@@ -1,5 +1,4 @@
 import { OidcClient, type User, UserManager, type UserManagerSettings, WebStorageStateStore } from "oidc-client-ts";
-
 import Env from "./Env";
 
 /** Carried through the round trip to Casdoor so the user lands back on the page they were on. */
@@ -7,15 +6,45 @@ interface SigninState {
   returnTo?: string;
 }
 
+export interface AuthConfig {
+  url: string;
+  clientId: string;
+}
+
+const APP_NAME = "IMDirectory";
+export const AUTH_CONFIG_URL = Env.API + "api/config/public/auth?app=" + APP_NAME;
+
 const SIGNIN_ERROR_KEY = "auth.signinError";
 const LOGIN_PATH = "/login/oauth/authorize";
 const SIGNUP_PATH = "/signup/oauth/authorize";
 
-function createSettings(): UserManagerSettings {
-  if (!Env.CASDOOR_CLIENT_ID) throw new Error("VITE_CASDOOR_CLIENT_ID is not set");
+//null clientId means sign-in is not configured (e.g. a public deployment). Any HTTP error, 404 included, is a failure to find out.
+async function fetchConfig(): Promise<AuthConfig | undefined> {
+  const response = await fetch(AUTH_CONFIG_URL, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`HTTP ${response.status}: Could not load the sign-in settings`);
+  const body = await response.json();
+  if (body?.clientId === null) return undefined;
+  if (typeof body?.url !== "string" || !body.url || typeof body?.clientId !== "string" || !body.clientId)
+    throw new Error("Returned incomplete sign-in settings");
+  return { url: body.url.replace(/\/+$/, ""), clientId: body.clientId };
+}
+
+let config: Promise<AuthConfig | undefined> | undefined;
+let manager: Promise<UserManager | undefined> | undefined;
+let refreshing: Promise<User | null> | undefined;
+
+function getConfig(): Promise<AuthConfig | undefined> {
+  return (config ??= fetchConfig().catch(e => {
+    config = undefined;
+    manager = undefined;
+    throw e;
+  }));
+}
+
+function createSettings(authConfig: AuthConfig): UserManagerSettings {
   return {
-    authority: Env.CASDOOR_URL,
-    client_id: Env.CASDOOR_CLIENT_ID,
+    authority: authConfig.url,
+    client_id: authConfig.clientId,
     redirect_uri: Env.AUTH_REDIRECT_URI,
     post_logout_redirect_uri: Env.AUTH_REDIRECT_URI,
     response_type: "code",
@@ -26,16 +55,29 @@ function createSettings(): UserManagerSettings {
   };
 }
 
-let settings: UserManagerSettings | undefined;
-let manager: UserManager | undefined;
-let refreshing: Promise<User | null> | undefined;
-
-function getSettings(): UserManagerSettings {
-  return (settings ??= createSettings());
+async function requireConfig(): Promise<AuthConfig> {
+  const authConfig = await getConfig();
+  if (!authConfig) throw new Error("Sign-in is not configured: IMAPI has no Casdoor client id for " + APP_NAME);
+  return authConfig;
 }
 
-function getManager(): UserManager {
-  return (manager ??= new UserManager(getSettings()));
+function getManager(): Promise<UserManager | undefined> {
+  return (manager ??= getConfig().then(authConfig => (authConfig ? new UserManager(createSettings(authConfig)) : undefined)));
+}
+
+async function requireManager(): Promise<UserManager> {
+  await requireConfig();
+  return (await getManager())!;
+}
+
+// `getManager` but treating IMAPI being unreachable as "not signed in" rather than failing
+async function getManagerOrUndefined(): Promise<UserManager | undefined> {
+  try {
+    return await getManager();
+  } catch (e) {
+    console.error(e);
+    return undefined;
+  }
 }
 
 function currentRoute(): string {
@@ -50,18 +92,22 @@ export function toSignupUrl(authorizeUrl: string): string {
 const AuthService = {
   /** Sends the browser to Casdoor to sign in, returning to `returnTo` (a router path) afterwards. */
   async login(returnTo: string = currentRoute()): Promise<void> {
-    await getManager().signinRedirect({ state: { returnTo } satisfies SigninState });
+    await (await requireManager()).signinRedirect({ state: { returnTo } satisfies SigninState });
   },
 
   /** As `login`, but starting on Casdoor's sign-up page. */
   async register(returnTo: string = currentRoute()): Promise<void> {
-    const request = await new OidcClient(getSettings()).createSigninRequest({ state: { returnTo } satisfies SigninState });
+    const request = await new OidcClient(createSettings(await requireConfig())).createSigninRequest({ state: { returnTo } satisfies SigninState });
     window.location.assign(toSignupUrl(request.url));
   },
 
   /** Signs out of this app and of Casdoor. Falls back to a reload if Casdoor offers no end-session endpoint. */
   async logout(): Promise<void> {
-    const userManager = getManager();
+    const userManager = await getManagerOrUndefined();
+    if (!userManager) {
+      window.location.reload();
+      return;
+    }
     try {
       await userManager.signoutRedirect();
     } catch (e) {
@@ -72,17 +118,17 @@ const AuthService = {
   },
 
   async clearSession() {
-    await getManager().removeUser();
+    await (await getManagerOrUndefined())?.removeUser();
   },
 
-  profileUrl(): string {
-    return Env.CASDOOR_URL + "/account";
+  async profileUrl(): Promise<string> {
+    return (await requireConfig()).url + "/account";
   },
 
   /** A valid access token for the signed-in user, renewed first if it has expired. Undefined if nobody is signed in. */
   async getAccessToken(): Promise<string | undefined> {
-    if (!Env.CASDOOR_CLIENT_ID) return undefined; // sign-in is not configured (e.g. a public deployment)
-    const userManager = getManager();
+    const userManager = await getManagerOrUndefined();
+    if (!userManager) return undefined; // sign-in is not configured (e.g. a public deployment) or IMAPI is unreachable
     const user = await userManager.getUser();
     if (!user) return undefined;
     if (!user.expired) return user.access_token;
@@ -98,12 +144,11 @@ const AuthService = {
   },
 
   async getIsCurrentUser(): Promise<boolean> {
-    if (!Env.CASDOOR_CLIENT_ID) return false; // sign-in is not configured (e.g. a public deployment)
-    const userManager = getManager();
+    const userManager = await getManagerOrUndefined();
+    if (!userManager) return false; // sign-in is not configured (e.g. a public deployment) or IMAPI is unreachable
     const user = await userManager.getUser();
     if (!user) return false;
-    else if (user.expired) return false;
-    else return true;
+    else return !user.expired;
   },
 
   /**
@@ -116,7 +161,7 @@ const AuthService = {
 
     let returnTo: string | undefined;
     try {
-      const user = await getManager().signinRedirectCallback();
+      const user = await (await requireManager()).signinRedirectCallback();
       returnTo = (user.state as SigninState | undefined)?.returnTo;
     } catch (e) {
       console.error("Sign-in failed", e);

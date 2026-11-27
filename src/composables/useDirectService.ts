@@ -1,8 +1,5 @@
-import { RecentActivityItemDto, useUserStore } from "@endeavour/vue-library";
-
 import { LocationQuery, useRouter } from "vue-router";
-
-import Env from "@/services/Env";
+import { RecentActivityItemDto, useUserStore } from "@endeavour/vue-library";
 import UserService from "@/services/UserService";
 import { useDirectoryStore } from "@/stores/directoryStore";
 
@@ -38,7 +35,7 @@ export function useDirectService() {
         query: options.query
       });
     } else {
-      window.open(Env.DIRECTORY_URL + pathUrl);
+      window.open(window.location.origin + "/#/" + pathUrl);
     }
   }
 

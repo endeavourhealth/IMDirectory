@@ -1,15 +1,14 @@
-import { IM } from "@endeavour/vue-library/enums";
-import { type TTEntity, TTEntitySchema } from "@endeavour/vue-library/models";
-
 import { faker } from "@faker-js/faker";
-import { isArray } from "lodash-es";
 import { HttpResponse, http } from "msw";
-
+import { IM } from "@endeavour/vue-library/enums";
+import { type TTEntity } from "@endeavour/vue-library/models";
 import * as fakerFactory from "@/mocks/fakerFactory";
 
 const apiUrl = "http://localhost:8082/imapi/api/";
 
 export const handlers = [
+  // clientId null as no Casdoor in mock mode
+  http.get(apiUrl + "config/public/auth", () => HttpResponse.json({ url: null, clientId: null })),
   http.get(apiUrl + "entity/public/children", ({ params }) => {
     const { iri } = params;
     if (iri === IM.STATUS) return HttpResponse.json([IM.ACTIVE, IM.DRAFT, IM.INACTIVE]);
